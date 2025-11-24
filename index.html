@@ -6228,7 +6228,6 @@ function submitHire() {
     
     directManager: document.getElementById('hire-direct-mgr').value,
     projectManager: document.getElementById('hire-project-mgr').value,
-    functionalManager: document.getElementById('hire-func-mgr').value,
     dottedManager: document.getElementById('hire-dotted-mgr').value,
     
     salary: document.getElementById('hire-salary').value,
@@ -6413,6 +6412,7 @@ function submitOffboarding() {
         loadTemplateList();
         updateWeekNumber();
         calculateOverallScore();
+        loadProjectsDropdown();
 
         toggleTimeFields();
       });
@@ -6604,7 +6604,7 @@ function submitOffboarding() {
         <div class="form-group"><label>Project Manager Email</label><input type="email" id="hire-project-mgr"></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Functional Manager Email</label><input type="email" id="hire-func-mgr"></div>
+        
         <div class="form-group"><label>Dotted Line Manager</label><input type="email" id="hire-dotted-mgr"></div>
       </div>
 
