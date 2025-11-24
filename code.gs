@@ -1210,12 +1210,17 @@ function getUserInfo() {
     const userEmail = Session.getActiveUser().getEmail().toLowerCase();
     const ss = getSpreadsheet();
     const timeZone = Session.getScriptTimeZone(); 
-    const dbSheet = getOrCreateSheet(ss, SHEET_NAMES.database);
     
-    let userData = getUserDataFromDb(dbSheet); 
+    // FIX: Use the new Core sheet instead of "database"
+    const dbSheet = getOrCreateSheet(ss, SHEET_NAMES.employeesCore);
+    
+    // We still use this helper to read data, ensuring it looks at Core
+    let userData = getUserDataFromDb(ss); 
     let isNewUser = false; 
 
     const KONECTA_DOMAIN = "@konecta.com"; 
+    
+    // Check if user exists in the loaded list
     if (!userData.emailToName[userEmail] && userEmail.endsWith(KONECTA_DOMAIN)) {
       Logger.log(`New user detected: ${userEmail}. Auto-registering.`);
       isNewUser = true;
@@ -1225,26 +1230,36 @@ function getUserInfo() {
       const lastName = nameParts[1] ? nameParts[1].charAt(0).toUpperCase() + nameParts[1].slice(1) : '';
       const newName = [firstName, lastName].join(' ').trim();
       
+      // FIX: Generate a temporary ID for the pending user
+      const newEmpID = "KOM-PENDING-" + new Date().getTime();
+
+      // FIX: Append to Employees_Core with the CORRECT column structure (Phase 5)
+      // Cols: ID, Name, Email, Role, Status, DirectMgr, FuncMgr, Annual, Sick, Casual ...
       dbSheet.appendRow([
-        newName || userEmail, // User Name
-        userEmail,  // Email
-        'agent',    // Role
-        0,          // Annual Balance
-        0,          // Sick Balance
-        0,          // Casual Balance
-        "",         // SupervisorEmail (BLANK)
-        "Pending"   // *** NEW: AccountStatus set to Pending ***
+        newEmpID,           // EmployeeID
+        newName || userEmail, // Name
+        userEmail,          // Email
+        'agent',            // Role
+        'Pending',          // AccountStatus
+        "",                 // DirectManager
+        "",                 // FunctionalManager
+        0, 0, 0,            // Balances
+        "", "", "", "", "", // Gender, EmpType, Contract, JobLevel, Dept
+        "", "", "", "", "", // Func, SubFunc, GCM, Scope, Offshore
+        "", "", "", "", "", // Dotted, ProjMgr, Bonus, N_Level, Exit
+        "Pending"           // Status (redundant col)
       ]);
+      
       SpreadsheetApp.flush(); 
-      userData = getUserDataFromDb(dbSheet);
+      // Reload data so the new row is picked up immediately
+      userData = getUserDataFromDb(ss);
     }
     
-    // *** NEW: Get the user's account status ***
     const accountStatus = userData.emailToAccountStatus[userEmail] || 'Pending';
     const userName = userData.emailToName[userEmail] || ""; 
-    const role = userData.emailToRole[userEmail] || 'agent'; 
-
-    // --- START: NEW STATUS LOGIC ---
+    const role = userData.emailToRole[userEmail] || 'agent';
+    
+    // Get Status for Punch Clock
     let currentStatus = null;
     if (accountStatus === 'Active') {
       const now = new Date();
@@ -1252,36 +1267,32 @@ function getUserInfo() {
       const formattedDate = Utilities.formatDate(shiftDate, timeZone, "MM/dd/yyyy");
       currentStatus = getLatestPunchStatus(userEmail, userName, shiftDate, formattedDate);
     }
-    // --- END: NEW STATUS LOGIC ---
 
-    let allUsers = []; 
+    // Admin/Manager lists for dropdowns
+    let allUsers = [];
     let allAdmins = [];
-    // *** MODIFIED: Send admin list to new users so they can pick a supervisor ***
     if (role === 'admin' || role === 'superadmin' || isNewUser || accountStatus === 'Pending') { 
       allUsers = userData.userList;
     }
-    
     allAdmins = userData.userList.filter(u => u.role === 'admin' || u.role === 'superadmin');
     
-    const myBalances = userData.emailToBalances[userEmail] ||
-    { annual: 0, sick: 0, casual: 0 };
+    const myBalances = userData.emailToBalances[userEmail] || { annual: 0, sick: 0, casual: 0 };
 
-    // *** ADD THIS BLOCK ***
-let hasPendingRoleRequests = false;
-if (role === 'superadmin') {
-  const reqSheet = getOrCreateSheet(ss, SHEET_NAMES.roleRequests);
-const data = reqSheet.getDataRange().getValues();
-  const statusIndex = data[0].indexOf("Status");
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][statusIndex] === 'Pending') {
-      hasPendingRoleRequests = true;
-break;
+    // Superadmin Notification Logic
+    let hasPendingRoleRequests = false;
+    if (role === 'superadmin') {
+      const reqSheet = getOrCreateSheet(ss, SHEET_NAMES.roleRequests);
+      const data = reqSheet.getDataRange().getValues();
+      // Check if any row has "Pending" in Status column (Assuming Col H / Index 7)
+      // Better to rely on your getRoleRequests logic, but a quick scan works here:
+      for (let i = 1; i < data.length; i++) {
+        // Adjust index based on your RoleRequests sheet structure (Phase 1)
+        if (data[i][7] === 'Pending') { 
+          hasPendingRoleRequests = true;
+          break;
+        }
+      }
     }
-  }
-}
-
-
-// *** END BLOCK ***
 
     return {
       name: userName, 
@@ -1290,12 +1301,13 @@ break;
       allUsers: allUsers,
       allAdmins: allAdmins,
       myBalances: myBalances,
-      isNewUser: isNewUser, // This flag is still useful
-      accountStatus: accountStatus, // *** NEW: Send status to frontend ***
-      hasPendingRoleRequests: hasPendingRoleRequests, // *** ADD THIS LINE ***
-      currentStatus: currentStatus // <-- ADD THIS LINE
+      isNewUser: isNewUser, 
+      accountStatus: accountStatus, 
+      hasPendingRoleRequests: hasPendingRoleRequests, 
+      currentStatus: currentStatus
     };
-} catch (e) {
+
+  } catch (e) {
     throw new Error("Failed in getUserInfo: " + e.message);
   }
 }
@@ -1708,7 +1720,6 @@ function getUserDataFromDb(ss) {
   const coreData = coreSheet.getDataRange().getValues();
   const piiData = piiSheet.getDataRange().getValues();
 
-  // 1. Create PII Map
   const piiMap = {};
   for (let i = 1; i < piiData.length; i++) {
     const empID = piiData[i][0];
@@ -1726,18 +1737,16 @@ function getUserDataFromDb(ss) {
   const emailToHiringDate = {};
   const userList = [];
 
-  // 2. Map Headers Dynamically
+  // Map Headers Dynamically
   const headers = coreData[0];
   const colIdx = {};
   headers.forEach((header, index) => { colIdx[header] = index; });
 
-  // DEBUG: Fallback indexes if headers are renamed/missing
-  const defaultDirectMgrIdx = 5; // Standard Col F
-  
+  const defaultDirectMgrIdx = 5; 
+
   for (let i = 1; i < coreData.length; i++) {
     try {
       const row = coreData[i];
-      // specific column reading with fallbacks
       const empID = row[colIdx["EmployeeID"] || 0];
       const name = row[colIdx["Name"] || 1];
       const email = row[colIdx["Email"] || 2];
@@ -1748,18 +1757,20 @@ function getUserDataFromDb(ss) {
         const userRole = (row[colIdx["Role"] || 3] || 'agent').toString().trim().toLowerCase();
         const accountStatus = (row[colIdx["AccountStatus"] || 4] || "Pending").toString().trim();
         
-        // --- MANAGER LOGIC FIX ---
-        // Try finding by name "DirectManagerEmail" OR "DirectManager" (common typo)
+        // --- MANAGER FETCHING (Removed Functional) ---
         let dmIdx = colIdx["DirectManagerEmail"];
         if (dmIdx === undefined) dmIdx = colIdx["DirectManager"]; 
-        if (dmIdx === undefined) dmIdx = defaultDirectMgrIdx; // Last resort
+        if (dmIdx === undefined) dmIdx = defaultDirectMgrIdx;
 
         let pmIdx = colIdx["ProjectManagerEmail"];
         if (pmIdx === undefined) pmIdx = colIdx["ProjectManager"];
 
+        let dotIdx = colIdx["DottedManager"];
+
         const directMgr = (row[dmIdx] || "").toString().trim().toLowerCase();
         const projectMgr = (pmIdx !== undefined ? row[pmIdx] : "").toString().trim().toLowerCase();
-        // -------------------------
+        const dottedMgr = (dotIdx !== undefined ? row[dotIdx] : "").toString().trim().toLowerCase();
+        // ---------------------------------------------
 
         const pii = piiMap[empID] || {};
         const hiringDateStr = convertDateToString(parseDate(pii.hiringDate));
@@ -1789,6 +1800,7 @@ function getUserDataFromDb(ss) {
           balances: emailToBalances[cleanEmail],
           supervisor: directMgr,
           projectManager: projectMgr,
+          dottedManager: dottedMgr,
           accountStatus: accountStatus,
           hiringDate: hiringDateStr
         });
