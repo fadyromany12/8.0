@@ -1125,6 +1125,10 @@
       footer p {
         margin: 0;
       }
+
+      .read-only-field { background-color: #f3f4f6 !important; color: #6b7280 !important; cursor: not-allowed; }
+  .profile-subview { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
       
     </style>
   </head>
@@ -1210,6 +1214,10 @@
           <button id="coaching-tab-button" class="tab-button" onclick="showTab('coaching')">
             <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
             <span class="nav-button-text">Coaching</span>
+          </button>
+          <button id="performance-tab-button" class="tab-button" onclick="showTab('performance')">
+            <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+            <span class="nav-button-text">Performance</span>
           </button>
         </div>
         
@@ -1351,73 +1359,93 @@
         <!-- ================================== -->
 
         <div id="profile-panel" class="tab-panel">
-  <h2>My Employee Profile</h2>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+    <h2>My Employee Profile</h2>
+    <span id="prof-status-badge" class="status-tag">Active</span>
+  </div>
   
-  <div style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
-    <button class="btn-secondary" onclick="switchProfileView('details')">Personal Details</button>
-    <button class="btn-secondary" style="background-color: transparent; color: var(--text-color); border: 1px solid var(--border-color);" onclick="switchProfileView('documents')">My Documents</button>
-    <button class="btn-danger" style="background-color: transparent; color: var(--status-error-text); border: 1px solid var(--status-error-text);" onclick="switchProfileView('warnings')">My Warnings</button>
+  <div class="button-group" style="justify-content: flex-start; gap: 10px; border-bottom: none; padding-bottom: 0;">
+    <button class="btn-secondary active" id="btn-prof-general" onclick="switchProfileSubTab('general')">General</button>
+    <button class="btn-secondary" id="btn-prof-contract" onclick="switchProfileSubTab('contract')">Contract & Job</button>
+    <button class="btn-secondary" id="btn-prof-personal" onclick="switchProfileSubTab('personal')">Personal & PII</button>
+    <button class="btn-secondary" id="btn-prof-docs" onclick="switchProfileSubTab('docs')">Documents</button>
+  </div>
+  <hr class="section-divider" style="margin: 10px 0 20px 0;">
+
+  <div id="prof-view-general" class="profile-subview">
+    <form id="prof-form-general" class="form-container">
+      <div class="form-row">
+        <div class="form-group"><label>Full Name</label><input type="text" id="prof-name" readonly class="read-only-field"></div>
+        <div class="form-group"><label>Employee ID</label><input type="text" id="prof-id" readonly class="read-only-field"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Konecta Email</label><input type="text" id="prof-email" readonly class="read-only-field"></div>
+        <div class="form-group"><label>Personal Email</label><input type="text" id="prof-personal-email"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Phone Number</label><input type="text" id="prof-phone"></div>
+        <div class="form-group"><label>Home Address</label><input type="text" id="prof-address"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Emergency Contact</label><input type="text" id="prof-emergency"></div>
+        <div class="form-group"><label>Relationship</label><input type="text" id="prof-relation"></div>
+      </div>
+      <div style="text-align:right; margin-top:15px;">
+        <button type="button" class="btn-primary" onclick="saveProfile()">Save Changes</button>
+      </div>
+    </form>
   </div>
 
-  <div id="profile-view-details">
-    <form id="profile-form" class="form-container">
+  <div id="prof-view-contract" class="profile-subview" style="display:none;">
+    <div class="form-container">
+      <h3 style="margin-top:0; color:var(--konecta-blue);">Job Details</h3>
       <div class="form-row">
-        <div class="form-group">
-          <label>Employee ID</label>
-          <input type="text" id="prof-id" readonly style="background-color: var(--border-color);">
-        </div>
-        <div class="form-group">
-          <label>Full Name</label>
-          <input type="text" id="prof-name" readonly style="background-color: var(--border-color);">
-        </div>
+        <div class="form-group"><label>Title</label><input type="text" id="prof-title" readonly class="read-only-field"></div>
+        <div class="form-group"><label>Department</label><input type="text" id="prof-dept" readonly class="read-only-field"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Direct Manager</label><input type="text" id="prof-direct-mgr" readonly class="read-only-field"></div>
+        <div class="form-group"><label>Project Manager</label><input type="text" id="prof-proj-mgr" readonly class="read-only-field"></div>
       </div>
       
-      <h3 style="font-size: 1rem; margin-top: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 5px;">Contact Information</h3>
+      <hr class="section-divider">
+      
+      <h3 style="margin-top:0; color:var(--konecta-blue);">Contract Info</h3>
       <div class="form-row">
-        <div class="form-group">
-          <label>Email</label>
-          <input type="text" id="prof-email" readonly style="background-color: var(--border-color);">
-        </div>
-        <div class="form-group">
-          <label>Phone Number</label>
-          <input type="text" id="prof-phone" placeholder="+20...">
-        </div>
+        <div class="form-group"><label>Hiring Date</label><input type="text" id="prof-hiring" readonly class="read-only-field"></div>
+        <div class="form-group"><label>Contract Type</label><input type="text" id="prof-contract-type" readonly class="read-only-field"></div>
       </div>
-      <div class="form-group">
-        <label>Home Address</label>
-        <input type="text" id="prof-address" placeholder="Street, City...">
-      </div>
-
-      <h3 style="font-size: 1rem; margin-top: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 5px;">Financial & HR (Read Only)</h3>
       <div class="form-row">
-        <div class="form-group">
-          <label>IBAN</label>
-          <input type="text" id="prof-iban">
-          <small>Changing this will trigger an HR approval request.</small>
-        </div>
-        <div class="form-group">
-          <label>Hiring Date</label>
-          <input type="text" id="prof-hiring" readonly style="background-color: var(--border-color);">
-        </div>
+        <div class="form-group"><label>Salary (Confidential)</label><input type="text" id="prof-salary" readonly class="read-only-field"></div>
+        <div class="form-group"><label>IBAN</label><input type="text" id="prof-iban" placeholder="Request change via HR"></div>
       </div>
-
-      <button type="button" class="btn-primary" onclick="saveProfile()" style="margin-top: 20px;">Save Changes</button>
-    </form>
-    <div id="profile-status" class="status-message"></div>
+    </div>
   </div>
 
-  <div id="profile-view-documents" style="display:none;">
+  <div id="prof-view-personal" class="profile-subview" style="display:none;">
+    <div class="form-container">
+      <div class="form-row">
+        <div class="form-group"><label>National ID</label><input type="text" id="prof-nat-id" readonly class="read-only-field"></div>
+        <div class="form-group"><label>Social Insurance</label><input type="text" id="prof-social" readonly class="read-only-field"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Birth Date</label><input type="text" id="prof-dob" readonly class="read-only-field"></div>
+        <div class="form-group"><label>Age</label><input type="text" id="prof-age" readonly class="read-only-field" style="width:80px;"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Marital Status</label><input type="text" id="prof-marital" readonly class="read-only-field"></div>
+        <div class="form-group"><label>Dependents</label><input type="text" id="prof-dependents" readonly class="read-only-field"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="prof-view-docs" class="profile-subview" style="display:none;">
     <div id="doc-list-container" class="request-list">
       <p class="text-color-secondary">Loading documents...</p>
     </div>
   </div>
 
-  <div id="profile-view-warnings" style="display:none;">
-    <div id="warning-list-container" class="request-list">
-      <p class="text-color-secondary">Loading records...</p>
-    </div>
-  </div>
-
+  <div id="profile-status" class="status-message"></div>
 </div>
 
         <!-- ================================== -->
@@ -1580,46 +1608,78 @@
         <!--     TAB 7: ADMIN TOOLS PANEL       -->
         <!-- ================================== -->
         <div id="admin-tools-panel" class="tab-panel">
-          <form id="manual-punch-form" class="form-container">
-            <h2>Manual Punch Editor</h2>
-            <p class="text-color-secondary" style="margin: -16px 0 16px 0;">Manually add or overwrite a punch for a user. This will bypass duplicate/sequential checks and recalculate metrics.</p>
-            <div class="form-group"><label for="manual-punch-user">User</label><select id="manual-punch-user" required></select></div>
-            <div class="form-group"><label for="manual-punch-action">Punch Action</label><select id="manual-punch-action" required><option value="">-- Select an action --</option><optgroup label="Adherence"><option value="Login">Login</option><option value="First Break In">First Break In</option><option value="First Break Out">First Break Out</option><option value="Lunch In">Lunch In</option><option value="Lunch Out">Lunch Out</option><option value="Last Break In">Last Break In</option><option value="Last Break Out">Last Break Out</option><option value="Logout">Logout</option></optgroup><optgroup label="Other Codes"><option value="Coaching In">Coaching In</option><option value="Coaching Out">Coaching Out</option><option value="Meeting In">Meeting In</option><option value="Meeting Out">Meeting Out</option><option value="Personal In">Personal In</option><option value="Personal Out">Personal Out</option></optgroup></select></div>
-            <div class="form-row"><div class="form-group"><label for="manual-punch-date">Date of Punch</label><input type="date" id="manual-punch-date" required></div><div class="form-group"><label for="manual-punch-time">Time of Punch</label><input type="time" id="manual-punch-time" required></div></div>
-            <button type="button" class="btn-primary" onclick="submitManualPunch()">Submit Manual Punch</button>
-          </form>
-          <div id="manual-punch-status" class="status-message"></div>
-          
-          <hr class="section-divider">
-          
-          <div id="balance-adjustment-section" style="display: none;"> 
-             <form id="balance-adjustment-form" class="form-container">
-              <h2>Leave Balance Management</h2>
-              <p class="text-color-secondary" style="margin: -16px 0 16px 0;">Manually adjust a user's leave balance. Use a positive number (e.g., 2) to add days, and a negative number (e.g., -1) to remove days.</p>
-              <div class="form-group"><label for="balance-user-select">Select User</label><select id="balance-user-select" required></select></div>
-              <div class="form-row">
-                <div class="form-group"><label for="balance-leave-type">Leave Type</label><select id="balance-leave-type"><option value="Annual">Annual</option><option value="Sick">Sick</option><option value="Casual">Casual</option></select></div>
-                <div class="form-group"><label for="balance-amount">Amount to Adjust</label><input type="number" id="balance-amount" step="0.5" placeholder="e.g., -1 or 1.5" required></div>
-              </div>
-              <div class="form-group"><label for="balance-reason">Reason for Adjustment</label><textarea id="balance-reason" rows="2" required></textarea></div>
-              <button type="button" class="btn-primary" style="background-color: var(--konecta-yellow); color: #111827;" onclick="submitBalanceAdjustment()">Submit Balance Adjustment</button>
-            </form>
-            <div id="balance-adjust-status" class="status-message"></div>
-            <hr class="section-divider">
-          </div>
-          
-          <form id="admin-leave-form" class="form-container">
-            <h2>Submit Leave on Behalf of User</h2>
-            <p class="text-color-secondary" style="margin: -16px 0 16px 0;">Submit a leave request for a user. This will check their balance and send it to their assigned supervisor for approval.</p>
-            <div class="form-group"><label for="admin-leave-user">Select User</LabeL><select id="admin-leave-user" required></select></div>
-            <div class="form-group"><label for="admin-leave-type">Leave Type</label><select id="admin-leave-type"><option value="Annual">Annual</option><option value="Sick">Sick</option><option value="Casual">Casual</option></select></div>
-            <div class="form-row"><div class="form-group"><label for="admin-leave-start-date">Start Date</label><input type="date" id="admin-leave-start-date" required></div><div class="form-group"><label for="admin-leave-end-date">End Date</label><input type="date" id="admin-leave-end-date"><small>Leave blank for a single-day request.</small></div></div>
-            <div class="form-group"><label for="admin-leave-reason">Reason (Optional)</label><textarea id="admin-leave-reason" rows="3"></textarea></div>
-            <button type="button" class="btn-primary" onclick="submitAdminLeaveRequest()">Submit Request for User</button>
-          </form>
-          
-          <div id="admin-leave-status" class="status-message"></div>
+  
+  <form id="manual-punch-form" class="form-container">
+    <h2>Manual Punch Editor</h2>
+    <p class="text-color-secondary" style="margin: -16px 0 16px 0;">Manually add or overwrite a punch for a user. This will bypass duplicate/sequential checks and recalculate metrics.</p>
+    <div class="form-group"><label for="manual-punch-user">User</label><select id="manual-punch-user" required></select></div>
+    <div class="form-group"><label for="manual-punch-action">Punch Action</label><select id="manual-punch-action" required><option value="">-- Select an action --</option><optgroup label="Adherence"><option value="Login">Login</option><option value="First Break In">First Break In</option><option value="First Break Out">First Break Out</option><option value="Lunch In">Lunch In</option><option value="Lunch Out">Lunch Out</option><option value="Last Break In">Last Break In</option><option value="Last Break Out">Last Break Out</option><option value="Logout">Logout</option></optgroup><optgroup label="Other Codes"><option value="Coaching In">Coaching In</option><option value="Coaching Out">Coaching Out</option><option value="Meeting In">Meeting In</option><option value="Meeting Out">Meeting Out</option><option value="Personal In">Personal In</option><option value="Personal Out">Personal Out</option></optgroup></select></div>
+    <div class="form-row"><div class="form-group"><label for="manual-punch-date">Date of Punch</label><input type="date" id="manual-punch-date" required></div><div class="form-group"><label for="manual-punch-time">Time of Punch</label><input type="time" id="manual-punch-time" required></div></div>
+    <button type="button" class="btn-primary" onclick="submitManualPunch()">Submit Manual Punch</button>
+  </form>
+  <div id="manual-punch-status" class="status-message"></div>
+  
+  <hr class="section-divider">
+  
+  <div id="balance-adjustment-section" style="display: none;"> 
+      <form id="balance-adjustment-form" class="form-container">
+      <h2>Leave Balance Management</h2>
+      <p class="text-color-secondary" style="margin: -16px 0 16px 0;">Manually adjust a user's leave balance. Use a positive number (e.g., 2) to add days, and a negative number (e.g., -1) to remove days.</p>
+      <div class="form-group"><label for="balance-user-select">Select User</label><select id="balance-user-select" required></select></div>
+      <div class="form-row">
+        <div class="form-group"><label for="balance-leave-type">Leave Type</label><select id="balance-leave-type"><option value="Annual">Annual</option><option value="Sick">Sick</option><option value="Casual">Casual</option></select></div>
+        <div class="form-group"><label for="balance-amount">Amount to Adjust</label><input type="number" id="balance-amount" step="0.5" placeholder="e.g., -1 or 1.5" required></div>
+      </div>
+      <div class="form-group"><label for="balance-reason">Reason for Adjustment</label><textarea id="balance-reason" rows="2" required></textarea></div>
+      <button type="button" class="btn-primary" style="background-color: var(--konecta-yellow); color: #111827;" onclick="submitBalanceAdjustment()">Submit Balance Adjustment</button>
+    </form>
+    <div id="balance-adjust-status" class="status-message"></div>
+    <hr class="section-divider">
+  </div>
+  
+  <form id="admin-leave-form" class="form-container">
+    <h2>Submit Leave on Behalf of User</h2>
+    <p class="text-color-secondary" style="margin: -16px 0 16px 0;">Submit a leave request for a user. This will check their balance and send it to their assigned supervisor for approval.</p>
+    <div class="form-group"><label for="admin-leave-user">Select User</label><select id="admin-leave-user" required></select></div>
+    <div class="form-group"><label for="admin-leave-type">Leave Type</label><select id="admin-leave-type"><option value="Annual">Annual</option><option value="Sick">Sick</option><option value="Casual">Casual</option></select></div>
+    <div class="form-row"><div class="form-group"><label for="admin-leave-start-date">Start Date</label><input type="date" id="admin-leave-start-date" required></div><div class="form-group"><label for="admin-leave-end-date">End Date</label><input type="date" id="admin-leave-end-date"><small>Leave blank for a single-day request.</small></div></div>
+    <div class="form-group"><label for="admin-leave-reason">Reason (Optional)</label><textarea id="admin-leave-reason" rows="3"></textarea></div>
+    <button type="button" class="btn-primary" onclick="submitAdminLeaveRequest()">Submit Request for User</button>
+  </form>
+  <div id="admin-leave-status" class="status-message"></div>
+
+  <hr class="section-divider">
+
+  <div id="offboarding-section" style="border: 1px solid #e53e3e; padding: 20px; border-radius: 8px; background-color: #fff5f5;">
+    <h3 style="color: #c53030; margin-top:0;">⚠ Offboarding / Termination</h3>
+    <p class="text-color-secondary">Use this to process an employee exit. This will set their status to "Left".</p>
+    
+    <form id="offboard-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Select Employee</label>
+          <select id="offboard-user-select"></select>
         </div>
+        <div class="form-group">
+          <label>Exit Date</label>
+          <input type="date" id="offboard-date" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Reason for Exit</label>
+        <select id="offboard-reason">
+          <option value="Resignation">Resignation</option>
+          <option value="Termination">Termination</option>
+          <option value="Contract End">Contract End</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <button type="button" class="btn-danger" onclick="submitOffboarding()">Process Exit</button>
+    </form>
+    <div id="offboard-status" class="status-message"></div>
+  </div>
+
+</div>
 
         <!-- ================================== -->
         <!--     TAB 8: DASHBOARD PANEL         -->
@@ -1880,14 +1940,76 @@
         <!-- ================================== -->
 
         <div id="recruitment-panel" class="tab-panel">
-          <h2>Recruitment Pipeline</h2>
-          <button class="btn-primary" onclick="loadCandidates()">Refresh List</button>
-          <div id="recruitment-status" class="status-message"></div>
-          
-          <div id="candidate-list" class="request-list" style="margin-top: 20px;">
-            <p class="text-color-secondary">Loading candidates...</p>
-          </div>
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2>Recruitment & Onboarding</h2>
+    <button class="btn-primary" onclick="showRequisitionModal()">+ Open New Requisition</button>
+  </div>
+
+  <div id="recruitment-stats" style="display: flex; gap: 15px; margin-bottom: 20px;">
+    </div>
+
+  <div class="form-group">
+    <input type="text" id="candidate-search" placeholder="Search candidates..." onkeyup="filterCandidates()" style="max-width: 300px;">
+  </div>
+
+  <div id="candidate-list" class="request-list">
+    <p class="text-color-secondary">Loading pipeline...</p>
+  </div>
+</div>
+
+        <!-- ================================== -->
+        <!--  TAB 15: Performance PANEL -->
+        <!-- ================================== -->
+
+
+<div id="performance-panel" class="tab-panel">
+  <h2>Performance Management</h2>
+  
+  <div id="manager-review-section" style="display:none; margin-bottom:30px; background:var(--input-bg); padding:20px; border-radius:8px; border:1px solid var(--border-color);">
+    <h3 style="margin-top:0; color:var(--konecta-blue);">Submit New Review</h3>
+    <form id="perf-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Select Employee</label>
+          <select id="perf-employee-select"></select> 
         </div>
+        <div class="form-group">
+          <label>Review Period</label>
+          <select id="perf-period">
+            <option value="Q1">Q1</option>
+            <option value="Q2">Q2</option>
+            <option value="Q3">Q3</option>
+            <option value="Q4">Q4</option>
+            <option value="Annual">Annual</option>
+            <option value="Probation">Probation</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Year</label>
+          <input type="number" id="perf-year" value="2025">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Rating (1 - Poor to 5 - Excellent)</label>
+        <div style="display:flex; gap:15px; align-items:center;">
+          <input type="range" id="perf-rating" min="1" max="5" step="1" oninput="document.getElementById('rating-val').innerText = this.value">
+          <span id="rating-val" style="font-weight:bold; font-size:1.2rem; color:var(--konecta-dark);">3</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Manager Comments</label>
+        <textarea id="perf-comments" rows="3" placeholder="Highlight achievements and areas for improvement..."></textarea>
+      </div>
+      <button type="button" class="btn-primary" onclick="submitPerformanceReview()">Submit Review</button>
+    </form>
+    <div id="perf-submit-status" class="status-message"></div>
+  </div>
+
+  <h3 style="margin-bottom:15px;">My Performance History</h3>
+  <div id="perf-history-list" class="request-list">
+    <p class="text-color-secondary">Loading reviews...</p>
+  </div>
+</div>
         
       </main> <!-- End #app-content -->
       
@@ -2072,6 +2194,9 @@
           loadAnnouncements_Admin();
         } else if (tabName === 'recruitment') {
           loadCandidates();
+        // Inside showTab(tabName) function:
+        } else if (tabName === 'performance') {
+          loadPerformanceTab();
         }
         
       }
@@ -3001,76 +3126,77 @@ function getStatusClass(status) {
         }
 
         function populateLeaveReport(requests) {
-          const listDiv = document.getElementById('pending-requests-list');
-          
-          if (requests.error) {
-             // Use the main status div
-             setStatus('approval-status', 'error', requests.error);
-             listDiv.innerHTML = ''; // Clear the list
-             return;
-          }
-          if (!Array.isArray(requests) || requests.length === 0) {
-            // Use the main status div and clear the list
-            setStatus('approval-status', 'success', 'No leave requests found for this filter.');
-            listDiv.innerHTML = '';
-            return;
-          }
-          
-          let html = '';
-          // Sort by request date, newest first
-          requests.sort((a, b) => new Date(b.requestedDate) - new Date(a.requestedDate));
+  const listDiv = document.getElementById('pending-requests-list');
+  
+  if (requests.error) {
+     setStatus('approval-status', 'error', requests.error);
+     listDiv.innerHTML = ''; 
+     return;
+  }
+  if (!Array.isArray(requests) || requests.length === 0) {
+    setStatus('approval-status', 'success', 'No leave requests found for this filter.');
+    listDiv.innerHTML = '';
+    return;
+  }
+  
+  let html = '';
+  requests.sort((a, b) => new Date(b.requestedDate) - new Date(a.requestedDate));
 
-          requests.forEach(req => {
-            let statusClass = '';
-            if (req.status === 'Pending') statusClass = 'status-pending';
-            if (req.status === 'Approved') statusClass = 'status-approved';
-            if (req.status === 'Denied') statusClass = 'status-denied';
+  requests.forEach(req => {
+    // 1. Dynamic Badge Color
+    let statusClass = '';
+    const s = req.status.toLowerCase();
+    if (s.includes('pending')) statusClass = 'status-pending'; // Matches "Pending", "Pending Project Mgr", etc.
+    else if (s === 'approved') statusClass = 'status-approved';
+    else if (s === 'denied') statusClass = 'status-denied';
 
-            let balanceInfo = '';
-            if (req.requesterBalance) {
-              const balanceKey = req.leaveType.toLowerCase();
-              const daysLeft = req.requesterBalance[balanceKey];
-              balanceInfo = `<p class="text-color-secondary"><strong>Balance:</strong> ${daysLeft} days</p>`;
-            }
-            
-            let actionHtml = '';
-            if (req.status === 'Pending') {
-               actionHtml = `
-                <button class="approve-btn" onclick="approveDenyRequest('${req.requestID}', 'Approved')">Approve</button>
-                <button class="deny-btn" onclick="approveDenyRequest('${req.requestID}', 'Denied')">Deny</button>
-               `;
-            } else {
-               actionHtml = `
-                <p style="margin: 4px 0;"><strong>Action:</strong> ${req.status} by ${req.actionBy || 'N/A'}</p>
-                ${req.actionByReason ? `<p style="margin: 4px 0;"><strong>Admin Reason:</strong> ${req.actionByReason}</p>` : ''}
-               `;
-            }
+    let balanceInfo = '';
+    if (req.requesterBalance) {
+      const balanceKey = req.leaveType.toLowerCase();
+      const daysLeft = req.requesterBalance[balanceKey];
+      balanceInfo = `<p class="text-color-secondary"><strong>Balance:</strong> ${daysLeft} days</p>`;
+    }
+    
+    let actionHtml = '';
+    
+    // 2. FIXED LOGIC: Check if status INCLUDES "Pending"
+    if (req.status.includes('Pending')) {
+       // It is waiting for approval (either Project or Direct)
+       actionHtml = `
+        <div style="margin-top: 10px;">
+          <button class="approve-btn" onclick="approveDenyRequest('${req.requestID}', 'Approved')">Approve</button>
+          <button class="deny-btn" onclick="approveDenyRequest('${req.requestID}', 'Denied')">Deny</button>
+        </div>
+        <p class="text-color-secondary" style="font-size: 0.8rem; margin-top: 5px;">Currently waiting on: <strong>${req.supervisorName}</strong></p>
+       `;
+    } else {
+       // It is finalized (Approved/Denied)
+       actionHtml = `
+        <p style="margin: 4px 0;"><strong>Action:</strong> ${req.status} by ${req.actionBy || 'N/A'}</p>
+        ${req.actionByReason ? `<p style="margin: 4px 0;"><strong>Reason:</strong> ${req.actionByReason}</p>` : ''}
+       `;
+    }
 
-            html += `
-              <div class="request-list-item">
-                <div class="item-details">
-                  <h4>${req.requestedByName} - ${req.leaveType}</h4>
-                  <p><strong>Dates:</strong> ${formatDate(req.startDate)} to ${formatDate(req.endDate)} (${req.totalDays} days)</p>
-                  <p><strong>Submitted:</strong> ${formatDate(req.requestedDate)}</p>
-                  ${req.reason ? `<p><strong>User Reason:</strong> ${req.reason}</p>` : ''}
-                  ${req.sickNoteUrl ? `<p><strong>Sick Note:</strong> <a href="${req.sickNoteUrl}" target="_blank" style="color:var(--konecta-blue); font-weight: 600;">View PDF</a></p>` : ''}
-                  
-                  <p class="text-color-secondary"><strong>Supervisor:</strong> ${req.supervisorName || 'N/A'}</p>
-                  ${balanceInfo}
-                </div>
-                <div class.item-actions">
-                  <span class="status-badge ${statusClass}">${req.status}</span>
-                  ${actionHtml}
-                </div>
-              </div>
-            `;
-          });
-          listDiv.innerHTML = html;
-
-          // *** THIS IS THE FIX ***
-          // Set a success message in the correct div after loading
-          setStatus('approval-status', 'success', `Successfully loaded ${requests.length} request(s).`);
-        }
+    html += `
+      <div class="request-list-item">
+        <div class="item-details">
+          <h4>${req.requestedByName} - ${req.leaveType}</h4>
+          <p><strong>Dates:</strong> ${formatDate(req.startDate)} to ${formatDate(req.endDate)} (${req.totalDays} days)</p>
+          <p><strong>Submitted:</strong> ${formatDate(req.requestedDate)}</p>
+          ${req.reason ? `<p><strong>User Reason:</strong> ${req.reason}</p>` : ''}
+          ${req.sickNoteUrl ? `<p><strong>Sick Note:</strong> <a href="${req.sickNoteUrl}" target="_blank" style="color:var(--konecta-blue); font-weight: 600;">View PDF</a></p>` : ''}
+          ${balanceInfo}
+        </div>
+        <div class="item-actions" style="display:flex; flex-direction:column; align-items:flex-end;">
+          <span class="status-badge ${statusClass}">${req.status}</span>
+          ${actionHtml}
+        </div>
+      </div>
+    `;
+  });
+  listDiv.innerHTML = html;
+  setStatus('approval-status', 'success', `Successfully loaded ${requests.length} request(s).`);
+}
       
       // --- Admin Approve/Deny Function ---
       function approveDenyRequest(requestID, newStatus) {
@@ -3353,7 +3479,7 @@ function populateHistoryReport(data) {
         document.body.removeChild(link);
       }
       
-      // --- Submit Manual Punch ---
+      // --- Submit Manual Punch (FIXED PHASE 3) ---
       function submitManualPunch() {
         try {
           const userEmail = document.getElementById('manual-punch-user').value;
@@ -3363,6 +3489,13 @@ function populateHistoryReport(data) {
           const action = document.getElementById('manual-punch-action').value;
           const date = document.getElementById('manual-punch-date').value;
           const time = document.getElementById('manual-punch-time').value;
+          
+          // *** FIX: Get Project ID if available ***
+          // Note: We might not have a project dropdown in the Manual Punch form yet. 
+          // If not, we pass null, or we should add one to the HTML.
+          // Assuming for now we pass null to keep it simple, or fetch from the main selector if relevant.
+          // Ideally, the Admin Tools panel should have its own Project Select.
+          const projectId = null; 
           
           if (!action) throw new Error("Please select a punch action.");
           if (!date) throw new Error("Please select a date.");
@@ -3374,20 +3507,21 @@ function populateHistoryReport(data) {
           
           google.script.run
             .withSuccessHandler(msg => {
-              if (msg.startsWith('Error:')) {
-                setStatus('manual-punch-status', 'error', msg.replace('Error: ', ''));
+              if (msg.message && msg.message.startsWith('Error:')) { // Handle object response
+                 setStatus('manual-punch-status', 'error', msg.message.replace('Error: ', ''));
+              } else if (typeof msg === 'string' && msg.startsWith('Error:')) {
+                 setStatus('manual-punch-status', 'error', msg.replace('Error: ', ''));
               } else {
-                setStatus('manual-punch-status', 'success', msg);
+                setStatus('manual-punch-status', 'success', msg.message || msg);
                 document.getElementById('manual-punch-form').reset();
                 document.getElementById('manual-punch-date').valueAsDate = new Date();
-                document.getElementById('manual-punch-user').selectedIndex = 0;
-                document.getElementById('manual-punch-action').selectedIndex = 0;
               }
             })
             .withFailureHandler(err => {
               setStatus('manual-punch-status', 'error', err.message);
             })
-            .webPunch(action, user.name, timestamp); 
+            // *** FIX: PASS 4 ARGUMENTS to match webPunch(action, target, time, project) ***
+            .webPunch(action, user.name, timestamp, projectId); 
             
         } catch(err) {
           setStatus('manual-punch-status', 'error', err.message);
@@ -5122,32 +5256,35 @@ function populateHistoryReport(data) {
 // [END] MODIFICATION 6
 
 
-      // *** START: NEW SUPERVISOR MODAL FUNCTIONS ***
-      function showSupervisorModal(allAdmins) {
-        const select = document.getElementById('supervisor-select');
-        select.innerHTML = '<option value="">-- Select your supervisor --</option>';
+      // *** NEW REGISTRATION JS ***
 
-        // Use the allAdminsList to populate the dropdown
+      function showSupervisorModal(allAdmins) {
+        const directSelect = document.getElementById('reg-direct-manager');
+        const funcSelect = document.getElementById('reg-functional-manager');
+        
+        let options = '<option value="">-- Select Manager --</option>';
         allAdmins.forEach(admin => {
-          const option = document.createElement('option');
-          option.value = admin.email;
-          option.textContent = `${admin.name} (${admin.role})`;
-          select.appendChild(option);
+          options += `<option value="${admin.email}">${admin.name} (${admin.role})</option>`;
         });
+
+        directSelect.innerHTML = options;
+        funcSelect.innerHTML = options;
         
         document.getElementById('supervisor-modal-backdrop').style.display = 'block';
         document.getElementById('supervisor-modal').style.display = 'flex';
       }
 
-      /**
-       * MODIFIED: Calls new function and shows message instead of reloading
-       */
-      function saveMySupervisor() {
+      function saveMyRegistration() {
         try {
-          const supervisorEmail = document.getElementById('supervisor-select').value;
-          if (!supervisorEmail) {
-            throw new Error("Please select a supervisor from the list.");
-          }
+          const formData = {
+             phone: document.getElementById('reg-phone').value,
+             address: document.getElementById('reg-address').value,
+             directManager: document.getElementById('reg-direct-manager').value,
+             functionalManager: document.getElementById('reg-functional-manager').value
+          };
+
+          if (!formData.phone || !formData.address) throw new Error("Address and Phone are required.");
+          if (!formData.directManager || !formData.functionalManager) throw new Error("Both managers are required.");
 
           setStatus('supervisor-save-status', 'processing', 'Saving submission...');
 
@@ -5156,7 +5293,6 @@ function populateHistoryReport(data) {
               if (msg.startsWith('Error:')) {
                 setStatus('supervisor-save-status', 'error', msg.replace('Error: ', ''));
               } else {
-                // Success! Close modal and show message on main page.
                 document.getElementById('supervisor-modal-backdrop').style.display = 'none';
                 document.getElementById('supervisor-modal').style.display = 'none';
                 
@@ -5164,14 +5300,14 @@ function populateHistoryReport(data) {
                 document.getElementById('punch-panel').innerHTML = `
                   <h2 style="color: var(--konecta-blue);">Registration Pending</h2>
                   <p class="text-color-secondary">${msg}</p>
-                  <p class="text-color-secondary">If your request is denied, you will be prompted to re-select a supervisor when you log in again.</p>
+                  <p class="text-color-secondary">Both of your selected managers must approve your request.</p>
                 `;
               }
             })
             .withFailureHandler(err => {
               setStatus('supervisor-save-status', 'error', err.message);
             })
-            .webSubmitSupervisorSelection(supervisorEmail); // *** MODIFIED: Call new function ***
+            .webSubmitFullRegistration(formData); // Call new function
 
         } catch (err) {
           setStatus('supervisor-save-status', 'error', err.message);
@@ -5220,33 +5356,32 @@ function populateHistoryReport(data) {
               return;
             }
             if (requests.length === 0) {
-              setStatus('registration-admin-status', 'success', 'No new user registrations are pending.');
+              setStatus('registration-admin-status', 'success', 'No new user registrations requiring your approval.');
               return;
             }
             
             setStatus('registration-admin-status', 'success', `Loaded ${requests.length} pending requests.`);
-            let html = '';
-            
-            // --- ADD THIS LINE ---
             const todayDateStr = new Date().toISOString().split('T')[0];
 
+            let html = '';
             requests.forEach(req => {
               html += `
                 <div class="request-list-item">
                   <div class="item-details">
                     <h4>${req.userName}</h4>
                     <p><strong>Email:</strong> ${req.userEmail}</p>
-                    <p><strong>Selected Supervisor:</strong> ${req.supervisorName}</p>
-                    <p class="text-color-secondary"><strong>Submitted:</strong> ${formatDate(req.timestamp)}</p>
+                    <p><strong>Action Required:</strong> Approve as <span style="color:var(--konecta-blue); font-weight:bold;">${req.approverRole} Manager</span></p>
+                    <p class="text-color-secondary">Other Manager Status: ${req.otherStatus}</p>
+                    <p class="text-color-secondary">Submitted: ${formatDate(req.timestamp)}</p>
                     
                     <div class="form-group" style="margin: 15px 0 0 0;">
-                      <label for="hiring-date-${req.requestID}" style="font-weight: 600;">Hiring Date:</label>
+                      <label for="hiring-date-${req.requestID}" style="font-weight: 600;">Hiring Date (Final Approval Only):</label>
                       <input type="date" id="hiring-date-${req.requestID}" value="${todayDateStr}" style="padding: 8px; background-color: var(--card-bg);">
                     </div>
-                    </div>
+                  </div>
                   <div class="item-actions">
-                    <button class="approve-btn" onclick="approveDenyRegistration('${req.requestID}', '${req.userEmail}', '${req.selectedSupervisorEmail}', 'Approved', 'hiring-date-${req.requestID}')">Approve</button>
-                    <button class="deny-btn" onclick="approveDenyRegistration('${req.requestID}', '${req.userEmail}', '${req.selectedSupervisorEmail}', 'Denied', null)">Deny</button>
+                    <button class="approve-btn" onclick="approveDenyRegistration('${req.requestID}', '${req.userEmail}', '', 'Approved', 'hiring-date-${req.requestID}')">Approve</button>
+                    <button class="deny-btn" onclick="approveDenyRegistration('${req.requestID}', '${req.userEmail}', '', 'Denied', null)">Deny</button>
                   </div>
                 </div>
               `;
@@ -5618,23 +5753,66 @@ function deleteAnnouncement(id) {
 
 // --- Profile Functions ---
 
+// [index.html] REPLACE loadMyProfile, saveProfile, and ADD switchProfileSubTab
+
+function switchProfileSubTab(tabName) {
+  // Hide all views
+  document.querySelectorAll('.profile-subview').forEach(el => el.style.display = 'none');
+  // Remove active class from buttons
+  document.querySelectorAll('#profile-panel .btn-secondary').forEach(btn => btn.classList.remove('active'));
+  
+  // Show selected
+  document.getElementById('prof-view-' + tabName).style.display = 'block';
+  document.getElementById('btn-prof-' + tabName).classList.add('active');
+
+  if (tabName === 'docs') loadMyDocuments();
+}
+
 function loadMyProfile() {
   setStatus('profile-status', 'processing', 'Loading profile data...');
   
   google.script.run
     .withSuccessHandler(data => {
-      setStatus('profile-status', '', ''); // Clear status
-      
-      // Populate Core Data
-      document.getElementById('prof-id').value = data.core.empID || 'N/A';
-      document.getElementById('prof-name').value = data.core.name;
-      document.getElementById('prof-email').value = data.core.email;
-      document.getElementById('prof-hiring').value = data.core.hiringDate || '';
+      setStatus('profile-status', '', ''); 
+      const c = data.core;
+      const p = data.pii;
 
-      // Populate PII Data
-      document.getElementById('prof-phone').value = data.pii.phone || '';
-      document.getElementById('prof-address').value = data.pii.address || '';
-      document.getElementById('prof-iban').value = data.pii.iban || '';
+      // --- General Tab ---
+      document.getElementById('prof-name').value = c.name;
+      document.getElementById('prof-id').value = c.empID || 'N/A';
+      document.getElementById('prof-email').value = c.email;
+      document.getElementById('prof-personal-email').value = p.personalEmail || '';
+      document.getElementById('prof-phone').value = p.phone || '';
+      document.getElementById('prof-address').value = p.address || '';
+      document.getElementById('prof-emergency').value = p.emergencyContact || '';
+      document.getElementById('prof-relation').value = p.emergencyRelation || '';
+
+      // --- Contract Tab ---
+      // Note: You might need to ensure 'role', 'supervisor', etc are passed correctly in data.core
+      // Since we didn't strictly map "Contract Type" in the return object yet, 
+      // you might see empty fields here unless we update webGetMyProfile to return raw row data.
+      // For now, let's map what we definitely have.
+      
+      document.getElementById('prof-direct-mgr').value = c.supervisor || '';
+      document.getElementById('prof-proj-mgr').value = c.projectManager || '';
+      document.getElementById('prof-hiring').value = p.hiringDate || '';
+      
+      // Confidential: Salary (Hide if empty or restricted)
+      if (p.salary) {
+         document.getElementById('prof-salary').value = p.salary;
+      } else {
+         document.getElementById('prof-salary').value = "Confidential";
+      }
+      document.getElementById('prof-iban').value = p.iban || '';
+
+      // --- Personal Tab ---
+      document.getElementById('prof-nat-id').value = p.nationalId || '';
+      document.getElementById('prof-social').value = p.socialInsurance || '';
+      document.getElementById('prof-dob').value = p.birthDate || '';
+      document.getElementById('prof-age').value = p.age || '';
+      document.getElementById('prof-marital').value = p.maritalStatus || '';
+      document.getElementById('prof-dependents').value = p.dependents || '';
+
     })
     .withFailureHandler(err => {
       setStatus('profile-status', 'error', err.message);
@@ -5646,6 +5824,9 @@ function saveProfile() {
   const formData = {
     phone: document.getElementById('prof-phone').value,
     address: document.getElementById('prof-address').value,
+    personalEmail: document.getElementById('prof-personal-email').value,
+    emergencyContact: document.getElementById('prof-emergency').value,
+    emergencyRelation: document.getElementById('prof-relation').value,
     iban: document.getElementById('prof-iban').value
   };
 
@@ -5744,16 +5925,29 @@ function loadMyWarnings() {
 // --- PHASE 3 JS FUNCTIONS ---
 
 function loadProjectsDropdown() {
+  const select = document.getElementById('current-project-select');
+  
   google.script.run
     .withSuccessHandler(projects => {
-      const select = document.getElementById('current-project-select');
       select.innerHTML = '<option value="">-- Select Active Project --</option>';
+      if (projects.length === 0) {
+         // Optionally add a disabled option saying "No projects found"
+         const opt = document.createElement('option');
+         opt.text = "(No projects available)";
+         opt.disabled = true;
+         select.appendChild(opt);
+      }
       projects.forEach(p => {
         const opt = document.createElement('option');
         opt.value = p.id;
         opt.text = p.name;
         select.appendChild(opt);
       });
+    })
+    .withFailureHandler(err => {
+      // This will show the actual error in the dropdown so you know what's wrong
+      select.innerHTML = `<option value="">Error: ${err.message}</option>`;
+      console.error("Project Load Error:", err);
     })
     .webGetProjects();
 }
@@ -5892,6 +6086,315 @@ function punch(action) {
           .webHireCandidate(id);
       }
 
+      // ====================================
+// === PHASE 3: RECRUITMENT JS ===
+// ====================================
+
+function loadRecruitmentAdmin() {
+  const list = document.getElementById('candidate-list');
+  list.innerHTML = '<p class="text-color-secondary">Loading pipeline...</p>';
+  
+  google.script.run
+    .withSuccessHandler(candidates => {
+      if (candidates.length === 0) {
+        list.innerHTML = '<p class="text-color-secondary">No candidates found.</p>';
+        return;
+      }
+      
+      let html = '';
+      candidates.forEach(c => {
+        // Badge Color Logic
+        let badgeClass = 'status-pending';
+        if(c.status === 'Hired') badgeClass = 'status-approved';
+        if(c.status === 'Rejected') badgeClass = 'status-denied';
+
+        // Action Buttons
+        let actions = '';
+        if (c.status !== 'Hired') {
+          actions = `
+            <div style="display:flex; gap:5px; margin-top:10px;">
+              <button class="view-btn" onclick="updateCandidateStatus('${c.id}', 'Active', 'Interview 1')">Interview 1</button>
+              <button class="view-btn" onclick="updateCandidateStatus('${c.id}', 'Active', 'Offer Sent')">Offer Sent</button>
+              <button class="submit-btn-green" onclick="openHireModal('${c.id}', '${c.name}', '${c.email}', '${c.phone}', '${c.nationalId}')">HIRE</button>
+              <button class="deny-btn" onclick="updateCandidateStatus('${c.id}', 'Rejected', 'Rejected')">Reject</button>
+            </div>
+          `;
+        } else {
+          actions = `<p style="color:green; font-weight:bold; margin-top:10px;">✅ Employee Created</p>`;
+        }
+
+        html += `
+          <div class="request-list-item candidate-item">
+            <div class="item-details">
+              <h4>${c.name} <span class="text-color-secondary">(${c.position})</span></h4>
+              <p><strong>Email:</strong> ${c.email} | <strong>Phone:</strong> ${c.phone}</p>
+              <p><strong>Applied:</strong> ${c.date} | <strong>Stage:</strong> ${c.stage}</p>
+              <p><a href="${c.cv}" target="_blank" style="color:var(--konecta-blue);">View CV</a></p>
+            </div>
+            <div class="item-actions">
+              <span class="status-badge ${badgeClass}">${c.status}</span>
+              ${actions}
+            </div>
+          </div>
+        `;
+      });
+      list.innerHTML = html;
+    })
+    .withFailureHandler(err => list.innerHTML = `<p class="status-message error visible">${err.message}</p>`)
+    .webGetCandidates();
+}
+
+// --- REQUISITION LOGIC ---
+function showRequisitionModal() {
+  document.getElementById('req-modal-backdrop').style.display = 'block';
+  document.getElementById('req-modal').style.display = 'flex';
+}
+
+function closeReqModal() {
+  document.getElementById('req-modal-backdrop').style.display = 'none';
+  document.getElementById('req-modal').style.display = 'none';
+}
+
+function submitRequisition() {
+  const data = {
+    title: document.getElementById('req-title').value,
+    department: document.getElementById('req-dept').value,
+    hiringManager: document.getElementById('req-manager').value,
+    description: document.getElementById('req-desc').value
+  };
+  
+  if(!data.title || !data.hiringManager) {
+    alert("Title and Hiring Manager are required.");
+    return;
+  }
+
+  // Disable button
+  const btn = document.querySelector('#req-modal .btn-primary');
+  btn.innerText = "Creating...";
+  btn.disabled = true;
+
+  google.script.run
+    .withSuccessHandler(msg => {
+      alert(msg);
+      closeReqModal();
+      btn.innerText = "Open Position";
+      btn.disabled = false;
+    })
+    .webCreateRequisition(data);
+}
+
+// --- CANDIDATE UPDATE LOGIC ---
+function updateCandidateStatus(id, status, stage) {
+  if(!confirm(`Change status to ${stage}?`)) return;
+  
+  google.script.run
+    .withSuccessHandler(() => {
+      loadRecruitmentAdmin(); // Refresh list
+    })
+    .webUpdateCandidateStatus(id, status, stage);
+}
+
+// --- HIRING WIZARD LOGIC ---
+function openHireModal(id, name, email, phone, natId) {
+  document.getElementById('hire-candidate-id').value = id;
+  document.getElementById('hire-fullname').value = name;
+  document.getElementById('hire-nat-id').value = natId || ""; // Pre-fill if available
+  
+  // Pre-fill personal email as a fallback, IT usually creates a new one
+  // document.getElementById('hire-k-email').value = ""; 
+  
+  document.getElementById('hire-modal-backdrop').style.display = 'block';
+  document.getElementById('hire-modal').style.display = 'flex';
+}
+
+function closeHireModal() {
+  document.getElementById('hire-modal-backdrop').style.display = 'none';
+  document.getElementById('hire-modal').style.display = 'none';
+  setStatus('hire-status', '', '');
+}
+
+function submitHire() {
+  const candidateId = document.getElementById('hire-candidate-id').value;
+  
+  // Gather all fields
+  const hiringData = {
+    fullName: document.getElementById('hire-fullname').value,
+    konectaEmail: document.getElementById('hire-k-email').value,
+    title: document.getElementById('hire-title').value,
+    department: document.getElementById('hire-dept').value,
+    jobLevel: document.getElementById('hire-level').value,
+    contractType: document.getElementById('hire-contract').value,
+    hiringDate: document.getElementById('hire-date').value,
+    
+    directManager: document.getElementById('hire-direct-mgr').value,
+    projectManager: document.getElementById('hire-project-mgr').value,
+    functionalManager: document.getElementById('hire-func-mgr').value,
+    dottedManager: document.getElementById('hire-dotted-mgr').value,
+    
+    salary: document.getElementById('hire-salary').value,
+    hourlyRate: document.getElementById('hire-hourly').value,
+    bonusPlan: document.getElementById('hire-bonus').value,
+    iban: "", // Can be added if you have an input for it
+    
+    nationalId: document.getElementById('hire-nat-id').value,
+    passport: document.getElementById('hire-passport').value,
+    socialInsurance: document.getElementById('hire-social').value,
+    birthDate: document.getElementById('hire-dob').value,
+    maritalStatus: document.getElementById('hire-marital').value,
+    address: document.getElementById('hire-address').value,
+    emergencyContact: document.getElementById('hire-emergency').value,
+    
+    // Defaults
+    gender: "", 
+    empType: "Full-Time",
+    gcm: "",
+    scope: "",
+    shore: "",
+    nLevel: ""
+  };
+
+  // Basic Validation
+  if(!hiringData.hiringDate || !hiringData.konectaEmail || !hiringData.directManager || !hiringData.salary) {
+    setStatus('hire-status', 'error', "Please fill in all required fields (Email, Direct Manager, Salary, Hiring Date).");
+    return;
+  }
+
+  setStatus('hire-status', 'processing', 'Creating Employee Record and Drive Folders...');
+
+  google.script.run
+    .withSuccessHandler(msg => {
+      setStatus('hire-status', 'success', msg);
+      setTimeout(() => {
+        closeHireModal();
+        loadRecruitmentAdmin(); // Refresh list
+      }, 2000);
+    })
+    .withFailureHandler(err => {
+      setStatus('hire-status', 'error', err.message);
+    })
+    .webHireCandidate(candidateId, hiringData);
+}
+
+function filterCandidates() {
+  const input = document.getElementById('candidate-search');
+  const filter = input.value.toLowerCase();
+  const nodes = document.getElementsByClassName('candidate-item');
+
+  for (let i = 0; i < nodes.length; i++) {
+    if (nodes[i].innerText.toLowerCase().includes(filter)) {
+      nodes[i].style.display = "flex";
+    } else {
+      nodes[i].style.display = "none";
+    }
+  }
+}
+
+// ====================================
+// === PHASE 5: PERFORMANCE JS ===
+// ====================================
+
+function loadPerformanceTab() {
+  // 1. Show Manager Section if Admin
+  if (selfRole === 'admin' || selfRole === 'superadmin') {
+    document.getElementById('manager-review-section').style.display = 'block';
+    // Reuse your existing populate dropdown logic
+    populateAdminDropdown(allUsersList, selfUserName, 'perf-employee-select', 'Select Employee');
+    
+    // Populate Offboarding dropdown too (since we are here)
+    populateAdminDropdown(allUsersList, selfUserName, 'offboard-user-select', 'Select Employee to Offboard');
+  }
+
+  // 2. Load My History
+  loadPerformanceHistory();
+}
+
+function loadPerformanceHistory() {
+  const list = document.getElementById('perf-history-list');
+  list.innerHTML = '<p class="text-color-secondary">Loading reviews...</p>';
+
+  google.script.run
+    .withSuccessHandler(reviews => {
+      if (reviews.length === 0) {
+        list.innerHTML = '<p class="text-color-secondary">No performance reviews found.</p>';
+        return;
+      }
+      let html = '';
+      reviews.forEach(r => {
+        // Star Rating Visual
+        const stars = '⭐'.repeat(r.rating);
+        html += `
+          <div class="request-list-item">
+            <div class="item-details">
+              <h4>${r.year} - ${r.period} Review</h4>
+              <p><strong>Rating:</strong> ${r.rating}/5 ${stars}</p>
+              <p style="white-space: pre-wrap; margin-top:5px;">${r.comments}</p>
+              <small class="text-color-secondary">Date: ${r.date}</small>
+            </div>
+          </div>
+        `;
+      });
+      list.innerHTML = html;
+    })
+    .withFailureHandler(err => list.innerHTML = `<p class="status-message error visible">${err.message}</p>`)
+    .webGetPerformanceHistory(null); // null = get my own
+}
+
+function submitPerformanceReview() {
+  const data = {
+    employeeEmail: document.getElementById('perf-employee-select').value,
+    period: document.getElementById('perf-period').value,
+    year: document.getElementById('perf-year').value,
+    rating: document.getElementById('perf-rating').value,
+    comments: document.getElementById('perf-comments').value
+  };
+
+  if (!data.employeeEmail) {
+    setStatus('perf-submit-status', 'error', 'Please select an employee.');
+    return;
+  }
+
+  setStatus('perf-submit-status', 'processing', 'Submitting review...');
+
+  google.script.run
+    .withSuccessHandler(msg => {
+      setStatus('perf-submit-status', 'success', msg);
+      document.getElementById('perf-comments').value = ''; // Clear comments
+    })
+    .withFailureHandler(err => {
+      setStatus('perf-submit-status', 'error', err.message);
+    })
+    .webSubmitPerformanceReview(data);
+}
+
+// ====================================
+// === PHASE 5: OFFBOARDING JS ===
+// ====================================
+
+function submitOffboarding() {
+  const email = document.getElementById('offboard-user-select').value;
+  const date = document.getElementById('offboard-date').value;
+  const reason = document.getElementById('offboard-reason').value;
+
+  if (!email || !date) {
+    setStatus('offboard-status', 'error', 'Employee and Exit Date are required.');
+    return;
+  }
+
+  if (!confirm(`Are you sure you want to mark ${email} as LEFT? This action cannot be easily undone.`)) return;
+
+  setStatus('offboard-status', 'processing', 'Processing exit...');
+
+  google.script.run
+    .withSuccessHandler(msg => {
+      setStatus('offboard-status', 'success', msg);
+      // Optional: Refresh user list to reflect status change (would require page reload or data refresh)
+    })
+    .withFailureHandler(err => {
+      setStatus('offboard-status', 'error', err.message);
+    })
+    .webOffboardEmployee({ email: email, exitDate: date, reason: reason });
+}
+
 
       // Initialize
       document.addEventListener("DOMContentLoaded", function() {
@@ -5940,24 +6443,44 @@ function punch(action) {
   
     <!-- New User Supervisor Modal -->
     <div id="supervisor-modal-backdrop" class="modal-backdrop"></div>
-    <div id="supervisor-modal" class="modal">
+    <div id="supervisor-modal" class="modal" style="max-width: 600px;">
       <div class="modal-header">
-        <h2>Welcome to KOMPASS!</h2>
+        <h2>Complete Your Registration</h2>
       </div>
       <div class="modal-body">
-        <p class="text-color-secondary">To complete your registration, please select your direct supervisor from the list below.</p>
+        <p class="text-color-secondary">Please fill in your details and select your reporting lines.</p>
+        
         <div class="form-group">
-          <label for="supervisor-select">Select Your Supervisor</label>
-          <select id="supervisor-select" required>
-            <option value="">-- Loading managers... --</option>
+          <label>Phone Number</label>
+          <input type="text" id="reg-phone" placeholder="+20...">
+        </div>
+        <div class="form-group">
+          <label>Home Address</label>
+          <input type="text" id="reg-address" placeholder="Full Address">
+        </div>
+
+        <hr class="section-divider">
+
+        <div class="form-group">
+          <label>Direct Manager (Line Manager)</label>
+          <select id="reg-direct-manager" required>
+            <option value="">-- Select Direct Manager --</option>
           </select>
         </div>
+        
+        <div class="form-group">
+          <label>Functional / Project Manager</label>
+          <select id="reg-functional-manager" required>
+            <option value="">-- Select Project Manager --</option>
+          </select>
+        </div>
+
         <div id="supervisor-save-status" class="status-message"></div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn-primary" onclick="saveMySupervisor()">Save and Continue</button>
+        <button type="button" class="btn-primary" onclick="saveMyRegistration()">Submit Registration</button>
       </div>
-    </div> 
+    </div>
     
     <!-- Generic Confirm Modal -->
     <div id="confirm-modal-backdrop" class="modal-backdrop"></div>
@@ -6020,6 +6543,101 @@ function punch(action) {
         <button type="button" class="btn-secondary" onclick="hideRoleApprovalModal()">Close</button>
       </div>
     </div>
-    
+<!-- Requisition Modal -->
+    <div id="req-modal-backdrop" class="modal-backdrop"></div>
+<div id="req-modal" class="modal">
+  <div class="modal-header">
+    <h2>Open New Job Requisition</h2>
+    <button class="close-btn" onclick="closeReqModal()">&times;</button>
+  </div>
+  <div class="modal-body">
+    <form id="req-form" class="form-container" style="border:none; box-shadow:none; padding:0;">
+      <div class="form-group"><label>Job Title</label><input type="text" id="req-title" required></div>
+      <div class="form-group"><label>Department</label><input type="text" id="req-dept" required></div>
+      <div class="form-group"><label>Hiring Manager Email</label><input type="email" id="req-manager" placeholder="manager@konecta.com" required></div>
+      <div class="form-group"><label>Job Description</label><textarea id="req-desc" rows="4"></textarea></div>
+    </form>
+  </div>
+  <div class="modal-footer">
+    <button class="btn-secondary" onclick="closeReqModal()">Cancel</button>
+    <button class="btn-primary" onclick="submitRequisition()">Open Position</button>
+  </div>
+</div>
+    <!-- Hiring Wizard Modal -->
+
+    <div id="hire-modal-backdrop" class="modal-backdrop"></div>
+<div id="hire-modal" class="modal" style="max-width: 900px; max-height: 95vh;">
+  <div class="modal-header">
+    <h2>Finalize Hiring Details</h2>
+    <button class="close-btn" onclick="closeHireModal()">&times;</button>
+  </div>
+  <div class="modal-body">
+    <p class="text-color-secondary">Please complete the employee profile to generate the contract and access.</p>
+    <form id="hire-form" class="form-container" style="border:none; box-shadow:none; padding:0;">
+      <input type="hidden" id="hire-candidate-id">
+      
+      <h3 style="font-size:1rem; color:var(--konecta-blue); border-bottom:1px solid #eee; padding-bottom:5px;">Contract & Role</h3>
+      <div class="form-row">
+        <div class="form-group"><label>Full Legal Name</label><input type="text" id="hire-fullname" required></div>
+        <div class="form-group"><label>Konecta Email (Created by IT)</label><input type="email" id="hire-k-email" required></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Job Title</label><input type="text" id="hire-title" required></div>
+        <div class="form-group"><label>Department</label><input type="text" id="hire-dept" required></div>
+        <div class="form-group"><label>Job Level</label><input type="text" id="hire-level"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Contract Type</label>
+          <select id="hire-contract">
+            <option value="Permanent">Permanent</option>
+            <option value="Temporary">Temporary</option>
+            <option value="Internship">Internship</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Hiring Date</label><input type="date" id="hire-date" required></div>
+        <div class="form-group"><label>Probation End Date</label><input type="date" id="hire-probation"></div>
+      </div>
+
+      <h3 style="font-size:1rem; color:var(--konecta-blue); border-bottom:1px solid #eee; padding-bottom:5px; margin-top:20px;">Reporting Line</h3>
+      <div class="form-row">
+        <div class="form-group"><label>Direct Manager Email</label><input type="email" id="hire-direct-mgr" required></div>
+        <div class="form-group"><label>Project Manager Email</label><input type="email" id="hire-project-mgr"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Functional Manager Email</label><input type="email" id="hire-func-mgr"></div>
+        <div class="form-group"><label>Dotted Line Manager</label><input type="email" id="hire-dotted-mgr"></div>
+      </div>
+
+      <h3 style="font-size:1rem; color:var(--konecta-blue); border-bottom:1px solid #eee; padding-bottom:5px; margin-top:20px;">Financials & PII</h3>
+      <div class="form-row">
+        <div class="form-group"><label>Basic Salary</label><input type="number" id="hire-salary" required></div>
+        <div class="form-group"><label>Hourly Rate (Optional)</label><input type="number" id="hire-hourly"></div>
+        <div class="form-group"><label>Bonus Plan</label><input type="text" id="hire-bonus"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>National ID</label><input type="text" id="hire-nat-id" required></div>
+        <div class="form-group"><label>Social Insurance No.</label><input type="text" id="hire-social"></div>
+        <div class="form-group"><label>Passport No.</label><input type="text" id="hire-passport"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Birth Date</label><input type="date" id="hire-dob" required></div>
+        <div class="form-group"><label>Marital Status</label>
+          <select id="hire-marital">
+            <option value="Single">Single</option>
+            <option value="Married">Married</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group"><label>Home Address</label><input type="text" id="hire-address" required></div>
+      <div class="form-group"><label>Emergency Contact (Name - Relation - Phone)</label><input type="text" id="hire-emergency"></div>
+    </form>
+    <div id="hire-status" class="status-message"></div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn-secondary" onclick="closeHireModal()">Cancel</button>
+    <button class="btn-primary submit-btn-green" onclick="submitHire()">Confirm Hire & Create Account</button>
+  </div>
+</div>
+
   </body>
 </html>
