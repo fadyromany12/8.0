@@ -4,15 +4,13 @@ const BUFFER_SHEET_ID = "19OLhS4OzvtgPsVHKVigjvrw3YR9K-sWf0U-TWvJ1Ftw";
 const SPREADSHEET_ID = "1FotLFASWuFinDnvpyLTsyO51OpJeKWtuG31VFje3Oik"; // Only the ID
 const SICK_NOTE_FOLDER_ID = "1Wu_eoEQ3FmfrzOdAwJkqMu4sPucLRu_0";
 const SHEET_NAMES = {
+  // --- Existing Sheets ---
   adherence: "Adherence Tracker",
-  // database: "Data Base", // <-- DEPRECATED: We are replacing this
-  employeesCore: "Employees_Core", // NEW: Public-facing info
-  employeesPII: "Employees_PII",   // NEW: Restricted info (Salary, ID, Home Addr)
-  assets: "Assets",                // NEW: Laptops, etc.
-  projects: "Projects",            // NEW: Project definitions
-  projectLogs: "Project_Logs",     // NEW: Time tracking logs
-  
-  // Existing sheets...
+  employeesCore: "Employees_Core", 
+  employeesPII: "Employees_PII",   
+  assets: "Assets",                
+  projects: "Projects",            
+  projectLogs: "Project_Logs",     
   schedule: "Schedules",
   logs: "Logs",
   otherCodes: "Other Codes",
@@ -24,8 +22,12 @@ const SHEET_NAMES = {
   movementRequests: "MovementRequests",
   announcements: "Announcements",
   roleRequests: "Role Requests",
-  // NEW PHASE 4
-  recruitment: "Recruitment_Candidates"
+  recruitment: "Recruitment_Candidates",
+
+  // --- NEW SHEETS (PHASE 5) ---
+  requisitions: "Requisitions",       // For opening new job roles
+  performance: "Performance_Reviews", // For yearly/quarterly ratings
+  historyLogs: "Employee_History"     // For tracking role changes/promotions
 };
 // --- Break Time Configuration (in seconds) ---
 const PLANNED_BREAK_SECONDS = 15 * 60; // 15 minutes
@@ -1695,79 +1697,98 @@ function createDateTime(dateObj, timeStr) {
   return newDate;
 }
 
-// - REPLACEMENT
-function getUserDataFromDb(ss) { // Note: ss might be passed or we get it
-  // Ensure we have the spreadsheet object
-  if (!ss || !ss.getSheetByName) ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+// [code.gs] REPLACE your existing getUserDataFromDb with this:
 
+function getUserDataFromDb(ss) {
+  if (!ss || !ss.getSheetByName) ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  
   const coreSheet = getOrCreateSheet(ss, SHEET_NAMES.employeesCore);
-  const piiSheet = getOrCreateSheet(ss, SHEET_NAMES.employeesPII); // We read PII for Hiring Date
+  const piiSheet = getOrCreateSheet(ss, SHEET_NAMES.employeesPII); 
 
   const coreData = coreSheet.getDataRange().getValues();
   const piiData = piiSheet.getDataRange().getValues();
 
-  // Create PII Map for fast lookup (Key: EmpID, Value: HiringDate)
+  // 1. Create PII Map
   const piiMap = {};
   for (let i = 1; i < piiData.length; i++) {
     const empID = piiData[i][0];
-    piiMap[empID] = {
-      hiringDate: piiData[i][1]
-    };
+    piiMap[empID] = { hiringDate: piiData[i][1] };
   }
 
   const nameToEmail = {};
   const emailToName = {};
   const emailToRole = {};
   const emailToBalances = {};
-  const emailToRow = {}; // This maps to Core Sheet Row now
+  const emailToRow = {};
   const emailToSupervisor = {};
+  const emailToProjectManager = {}; 
   const emailToAccountStatus = {};
   const emailToHiringDate = {};
   const userList = [];
 
-  // Loop through Core Data
+  // 2. Map Headers Dynamically
+  const headers = coreData[0];
+  const colIdx = {};
+  headers.forEach((header, index) => { colIdx[header] = index; });
+
+  // DEBUG: Fallback indexes if headers are renamed/missing
+  const defaultDirectMgrIdx = 5; // Standard Col F
+  
   for (let i = 1; i < coreData.length; i++) {
     try {
-      // Core Columns: 
-      // 0:ID, 1:Name, 2:Email, 3:Role, 4:Status, 5:DirectMgr, 6:FuncMgr, 7:Annual, 8:Sick, 9:Casual
       const row = coreData[i];
-      const empID = row[0];
-      const name = row[1];
-      const email = row[2];
-      
+      // specific column reading with fallbacks
+      const empID = row[colIdx["EmployeeID"] || 0];
+      const name = row[colIdx["Name"] || 1];
+      const email = row[colIdx["Email"] || 2];
+
       if (name && email) {
         const cleanName = name.toString().trim();
         const cleanEmail = email.toString().trim().toLowerCase();
-        const userRole = (row[3] || 'agent').toString().trim().toLowerCase();
-        const accountStatus = (row[4] || "Pending").toString().trim();
-        const supervisorEmail = (row[5] || "").toString().trim().toLowerCase();
+        const userRole = (row[colIdx["Role"] || 3] || 'agent').toString().trim().toLowerCase();
+        const accountStatus = (row[colIdx["AccountStatus"] || 4] || "Pending").toString().trim();
+        
+        // --- MANAGER LOGIC FIX ---
+        // Try finding by name "DirectManagerEmail" OR "DirectManager" (common typo)
+        let dmIdx = colIdx["DirectManagerEmail"];
+        if (dmIdx === undefined) dmIdx = colIdx["DirectManager"]; 
+        if (dmIdx === undefined) dmIdx = defaultDirectMgrIdx; // Last resort
 
-        // Get PII Data via ID
+        let pmIdx = colIdx["ProjectManagerEmail"];
+        if (pmIdx === undefined) pmIdx = colIdx["ProjectManager"];
+
+        const directMgr = (row[dmIdx] || "").toString().trim().toLowerCase();
+        const projectMgr = (pmIdx !== undefined ? row[pmIdx] : "").toString().trim().toLowerCase();
+        // -------------------------
+
         const pii = piiMap[empID] || {};
-        const hiringDateObj = parseDate(pii.hiringDate);
-        const hiringDateStr = convertDateToString(hiringDateObj);
+        const hiringDateStr = convertDateToString(parseDate(pii.hiringDate));
 
         nameToEmail[cleanName] = cleanEmail;
         emailToName[cleanEmail] = cleanName;
         emailToRole[cleanEmail] = userRole;
-        emailToRow[cleanEmail] = i + 1; // Row in Employees_Core
-        emailToSupervisor[cleanEmail] = supervisorEmail;
+        emailToRow[cleanEmail] = i + 1;
+        
+        emailToSupervisor[cleanEmail] = directMgr;
+        emailToProjectManager[cleanEmail] = projectMgr;
+        
         emailToAccountStatus[cleanEmail] = accountStatus;
         emailToHiringDate[cleanEmail] = hiringDateStr;
 
         emailToBalances[cleanEmail] = {
-          annual: parseFloat(row[7]) || 0,
-          sick: parseFloat(row[8]) || 0,
-          casual: parseFloat(row[9]) || 0
+          annual: parseFloat(row[colIdx["AnnualBalance"] || 7]) || 0,
+          sick: parseFloat(row[colIdx["SickBalance"] || 8]) || 0,
+          casual: parseFloat(row[colIdx["CasualBalance"] || 9]) || 0
         };
 
         userList.push({
-          empID: empID, // NEW FIELD
+          empID: empID,
           name: cleanName,
           email: cleanEmail,
           role: userRole,
           balances: emailToBalances[cleanEmail],
-          supervisor: supervisorEmail,
+          supervisor: directMgr,
+          projectManager: projectMgr,
           accountStatus: accountStatus,
           hiringDate: hiringDateStr
         });
@@ -1777,15 +1798,12 @@ function getUserDataFromDb(ss) { // Note: ss might be passed or we get it
     }
   }
 
-  userList.sort((a, b) => a.name.localeCompare(b.name));
-
   return {
     nameToEmail, emailToName, emailToRole, emailToBalances,
-    emailToRow, emailToSupervisor, emailToAccountStatus,
-    emailToHiringDate, userList
+    emailToRow, emailToSupervisor, emailToProjectManager,
+    emailToAccountStatus, emailToHiringDate, userList
   };
 }
-
 
 
 /**
@@ -2008,16 +2026,13 @@ function findOrCreateRow(sheet, userName, shiftDate, formattedDate) {
 }
 
 function getOrCreateSheet(ss, name) {
+  if (!name) return null; // PREVENT UNDEFINED NAMES
   let sheet = ss.getSheetByName(name);
   if (!sheet) {
     sheet = ss.insertSheet(name);
     
-    // ==================================================
-    // === PHASE 1: NEW DATABASE ARCHITECTURE ===
-    // ==================================================
-    
+    // === PHASE 1 TABLES ===
     if (name === SHEET_NAMES.employeesCore) {
-      // 1. Employees_Core: Operational data (Visible to Admins/Managers)
       sheet.getRange("A1:J1").setValues([[
         "EmployeeID", "Name", "Email", "Role", "AccountStatus", 
         "DirectManagerEmail", "FunctionalManagerEmail", 
@@ -2026,52 +2041,40 @@ function getOrCreateSheet(ss, name) {
       sheet.setFrozenRows(1);
     } 
     else if (name === SHEET_NAMES.employeesPII) {
-      // 2. Employees_PII: Sensitive data (Restricted access)
       sheet.getRange("A1:H1").setValues([[
         "EmployeeID", "HiringDate", "Salary", "IBAN", "Address", 
         "Phone", "MedicalInfo", "ContractType"
       ]]);
-      sheet.getRange("B:B").setNumberFormat("yyyy-mm-dd"); // Format Hiring Date
+      sheet.getRange("B:B").setNumberFormat("yyyy-mm-dd");
       sheet.setFrozenRows(1);
     }
     else if (name === SHEET_NAMES.assets) {
-      // 3. Assets: Laptops, equipment, etc.
       sheet.getRange("A1:E1").setValues([[
         "AssetID", "Type", "AssignedTo_EmployeeID", "DateAssigned", "Status"
       ]]);
       sheet.setFrozenRows(1);
     }
     else if (name === SHEET_NAMES.projects) {
-      // 4. Projects: Project definitions
       sheet.getRange("A1:D1").setValues([[
         "ProjectID", "ProjectName", "ProjectManagerEmail", "AllowedRoles"
       ]]);
       sheet.setFrozenRows(1);
     }
     else if (name === SHEET_NAMES.projectLogs) {
-      // 5. Project_Logs: Time tracking per project
       sheet.getRange("A1:E1").setValues([[
         "LogID", "EmployeeID", "ProjectID", "Date", "HoursLogged"
       ]]);
       sheet.setFrozenRows(1);
     }
-    else if (name === SHEET_NAMES.recruitment) {
-      // Recruitment Pipeline
-      sheet.getRange("A1:M1").setValues([[
-        "CandidateID", "Name", "Email", "Phone", "Position", "CV_Link", 
-        "Status", "Stage", "Interview1_Score", "Interview1_Notes", 
-        "Interview2_Score", "Interview2_Notes", "AppliedDate"
+
+    // === EXISTING MODULES ===
+    else if (name === SHEET_NAMES.warnings) {
+      sheet.getRange("A1:H1").setValues([[
+        "WarningID", "EmployeeID", "Type", "Level", "Date", "Description", "Status", "IssuedBy"
       ]]);
       sheet.setFrozenRows(1);
-      sheet.getRange("M:M").setNumberFormat("mm/dd/yyyy hh:mm:ss");
     }
-
-    // ==================================================
-    // === EXISTING MODULES (PRESERVED) ===
-    // ==================================================
-
     else if (name === SHEET_NAMES.schedule) {
-      // 7-Column Layout
       sheet.getRange("A1:G1").setValues([["Name", "StartDate", "ShiftStartTime", "EndDate", "ShiftEndTime", "LeaveType", "agent email"]]);
       sheet.getRange("B:B").setNumberFormat("mm/dd/yyyy");
       sheet.getRange("C:C").setNumberFormat("hh:mm");
@@ -2097,21 +2100,10 @@ function getOrCreateSheet(ss, name) {
       sheet.getRange("A1:N1").setValues([[ 
         "RequestID", "Status", "RequestedByEmail", "RequestedByName", 
         "LeaveType", "StartDate", "EndDate", "TotalDays", "Reason", 
-        "ActionDate", "ActionBy", "SupervisorEmail", "ActionReason",
-        "SickNoteURL"
+        "ActionDate", "ActionBy", "SupervisorEmail", "ActionReason", "SickNoteURL"
       ]]);
       sheet.getRange("F:G").setNumberFormat("mm/dd/yyyy");
       sheet.getRange("J:J").setNumberFormat("mm/dd/yyyy");
-    } 
-    else if (name === SHEET_NAMES.coaching_OLD) {
-      sheet.getRange("A1:R1").setValues([[
-        "SessionID", "Status", "AgentEmail", "AgentName", "CoachEmail", "CoachName",
-        "WeekNumber", "SessionDate", "AreaOfConcern", "RootCause", "CoachingTopic",
-        "ActionsTaken", "AgentFeedback", "FollowUpPlan", "NextReviewDate",
-        "QA_ID", "QA_Score", "LoggedByAdmin"
-      ]]);
-      sheet.getRange("H:H").setNumberFormat("mm/dd/yyyy");
-      sheet.getRange("O:O").setNumberFormat("mm/dd/yyyy");
     } 
     else if (name === SHEET_NAMES.coachingSessions) { 
       sheet.getRange("A1:M1").setValues([[ 
@@ -2133,18 +2125,18 @@ function getOrCreateSheet(ss, name) {
       sheet.getRange("A1:D1").setValues([[
         "TemplateName", "Category", "Criteria", "Status"
       ]]);
-      sheet.getRange("F1").setValue("Manually add your template criteria here, or use the 'Coaching Admin' tab. Use 'Active' in the Status column to make them appear.");
-      sheet.appendRow(["Default", "Greeting", "Agent greeted customer", "Active"]);
-      sheet.appendRow(["Default", "Greeting", "Agent confirmed name", "Active"]);
-      sheet.appendRow(["Default", "Sales Process", "Agent offered solution", "Active"]);
-      sheet.appendRow(["Default", "Sales Process", "Agent handled objections", "Active"]);
-      sheet.appendRow(["Default", "Closing", "Agent confirmed next steps", "Active"]);
+      sheet.setFrozenRows(1);
     }
     else if (name === SHEET_NAMES.pendingRegistrations) {
-      sheet.getRange("A1:F1").setValues([[
-        "RequestID", "UserEmail", "UserName", "SelectedSupervisorEmail", "Status", "RequestTimestamp"
+      // MODIFIED: New Schema for Matrix Approval & PII
+      sheet.getRange("A1:J1").setValues([[
+        "RequestID", "UserEmail", "UserName", 
+        "DirectManagerEmail", "FunctionalManagerEmail", 
+        "DirectStatus", "FunctionalStatus", 
+        "Address", "Phone", "RequestTimestamp"
       ]]);
-      sheet.getRange("F:F").setNumberFormat("mm/dd/yyyy hh:mm:ss");
+      sheet.setFrozenRows(1);
+      sheet.getRange("J:J").setNumberFormat("mm/dd/yyyy hh:mm:ss");
     }
     else if (name === SHEET_NAMES.movementRequests) {
       sheet.getRange("A1:J1").setValues([[
@@ -2168,28 +2160,15 @@ function getOrCreateSheet(ss, name) {
       sheet.getRange("G:G").setNumberFormat("mm/dd/yyyy hh:mm:ss");
       sheet.getRange("J:J").setNumberFormat("mm/dd/yyyy hh:mm:ss");
     }
-    else if (name === "Warnings") {
-      sheet.getRange("A1:H1").setValues([[
-        "WarningID", "EmployeeID", "Type", "Level", "Date", "Description", "Status", "IssuedBy"
-      ]]);
-      sheet.setFrozenRows(1);
-    }
   }
 
-  // --- Ensure formats are applied even if sheet exists (Maintenance) ---
-  if (name === SHEET_NAMES.adherence) {
-    sheet.getRange("C:J").setNumberFormat("hh:mm:ss");
-  }
-  if (name === SHEET_NAMES.otherCodes) {
-    sheet.getRange("D:E").setNumberFormat("hh:mm:ss");
-  }
-  if (name === SHEET_NAMES.employeesPII) {
-    sheet.getRange("B:B").setNumberFormat("yyyy-mm-dd"); // Maintain Hiring Date format
-  }
+  // --- Maintenance Formats ---
+  if (name === SHEET_NAMES.adherence) sheet.getRange("C:J").setNumberFormat("hh:mm:ss");
+  if (name === SHEET_NAMES.otherCodes) sheet.getRange("D:E").setNumberFormat("hh:mm:ss");
+  if (name === SHEET_NAMES.employeesPII) sheet.getRange("B:B").setNumberFormat("yyyy-mm-dd");
 
   return sheet;
 }
-
 
 // (No Change)
 function timeDiffInSeconds(start, end) {
@@ -2311,28 +2290,24 @@ function getMyRequests(userEmail) {
   const ss = getSpreadsheet();
   const reqSheet = getOrCreateSheet(ss, SHEET_NAMES.leaveRequests);
   const allData = reqSheet.getDataRange().getValues();
-  const timeZone = Session.getScriptTimeZone();
   const dbSheet = getOrCreateSheet(ss, SHEET_NAMES.database);
   const userData = getUserDataFromDb(dbSheet);
+  
   const myRequests = [];
-  Logger.log(`getMyRequests: Searching for email: ${userEmail}`);
-
+  
+  // Loop backwards (newest first)
   for (let i = allData.length - 1; i > 0; i--) { 
     const row = allData[i];
     if (String(row[2] || "").trim().toLowerCase() === userEmail) {
       try { 
         const startDate = new Date(row[5]);
         const endDate = new Date(row[6]);
-        const requestedDateNum = Number(row[0].split('_')[1]);
-        Logger.log(`getMyRequests: Found match for ${userEmail} at row ${i+1}`);
+        // Parse numeric ID part if possible, else use today
+        const requestedDateNum = row[0].includes('_') ? Number(row[0].split('_')[1]) : new Date().getTime();
 
+        const currentApproverEmail = row[11]; // Col L
+        const approverName = userData.emailToName[currentApproverEmail] || currentApproverEmail || "Pending Assignment";
 
-        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || isNaN(requestedDateNum)) {
-          Logger.log(`Skipping Row ${i+1}. It contains invalid date data.`);
-          continue; 
-        }
-
-        const supervisorEmail = row[11];
         myRequests.push({
           requestID: row[0],
           status: row[1],
@@ -2342,19 +2317,17 @@ function getMyRequests(userEmail) {
           totalDays: row[7],
           reason: row[8],
           requestedDate: convertDateToString(new Date(requestedDateNum)),
-          supervisorName: userData.emailToName[supervisorEmail] || supervisorEmail,
-          actionDate: convertDateToString(new Date(row[9])), // ActionDate
-          actionBy: userData.emailToName[row[10]] || row[10], // ActionBy
+          supervisorName: approverName, // Shows who is holding the request
+          actionDate: convertDateToString(new Date(row[9])),
+          actionBy: userData.emailToName[row[10]] || row[10],
           actionByReason: row[12] || "",
-          sickNoteUrl: row[13] || "" // <-- 🛑 ADD THIS LINE
+          sickNoteUrl: row[13] || ""
         });
       } catch (e) {
-        Logger.log(`CRITICAL ERROR processing row ${i+1} for getMyRequests. Error: ${e.message}`);
-        Logger.log(`getMyRequests for ${userEmail}: Found ${myRequests.length} total requests.`);
+        Logger.log("Error parsing row " + i);
       }
     }
   }
-  Logger.log(`getMyRequests: Returning ${myRequests.length} requests for ${userEmail}`);
   return myRequests;
 }
 
@@ -2364,165 +2337,145 @@ function getAdminLeaveRequests(adminEmail, filter) {
   const userData = getUserDataFromDb(dbSheet);
   const adminRole = userData.emailToRole[adminEmail] || 'agent';
 
-  if (adminRole !== 'admin' && adminRole !== 'superadmin') {
-    return { error: "Permission Denied." };
-  }
-
-  // Get my subordinates
-  const mySubordinateEmails = new Set(webGetAllSubordinateEmails(adminEmail));
+  if (adminRole !== 'admin' && adminRole !== 'superadmin') return { error: "Permission Denied." };
 
   const reqSheet = getOrCreateSheet(ss, SHEET_NAMES.leaveRequests);
   const allData = reqSheet.getDataRange().getValues();
   const results = [];
-
   const filterStatus = filter.status.toLowerCase();
   const filterUser = filter.userEmail;
 
-  for (let i = 1; i < allData.length; i++) { // Loop from top to bottom
+  // Get subordinates for visibility check
+  const mySubordinateEmails = new Set(webGetAllSubordinateEmails(adminEmail));
+
+  for (let i = 1; i < allData.length; i++) { 
     const row = allData[i];
-    if (!row[0]) continue; // Skip empty rows
+    if (!row[0]) continue;
+
+    const requestStatus = (row[1] || "").toString().trim().toLowerCase();
+    const requesterEmail = (row[2] || "").toString().trim().toLowerCase();
+    const assignedApprover = (row[11] || "").toString().trim().toLowerCase(); 
+    
+    // 1. Filter by Status
+    if (filterStatus !== 'all' && !requestStatus.includes(filterStatus)) continue;
+
+    // 2. Filter by User
+    if (filterUser && filterUser !== 'ALL_USERS' && filterUser !== 'ALL_SUBORDINATES' && requesterEmail !== filterUser) continue;
+
+    // 3. Visibility Logic
+    let isVisible = false;
+    if (adminRole === 'superadmin') {
+      isVisible = true;
+    } else {
+      // Show if assigned to me OR if I am the direct manager/project manager (historical visibility)
+      // Note: We check the SNAPSHOT columns (O=14, P=15) if available, else standard check
+      const directMgrSnapshot = (row[14] || "").toString().toLowerCase();
+      const projectMgrSnapshot = (row[15] || "").toString().toLowerCase();
+
+      if (assignedApprover === adminEmail) isVisible = true;
+      else if (directMgrSnapshot === adminEmail) isVisible = true;
+      else if (projectMgrSnapshot === adminEmail) isVisible = true;
+      else if (mySubordinateEmails.has(requesterEmail)) isVisible = true;
+    }
+
+    if (!isVisible) continue;
 
     try {
-      const requestStatus = (row[1] || "").toString().trim().toLowerCase();
-      const requesterEmail = (row[2] || "").toString().trim().toLowerCase();
-      const supervisorEmail = (row[11] || "").toString().trim().toLowerCase();
+        const startDate = new Date(row[5]);
+        const endDate = new Date(row[6]);
+        const datePart = row[0].split('_')[1];
+        const reqDate = datePart ? new Date(Number(datePart)) : new Date();
 
-      // --- FILTERING LOGIC ---
-      // 1. Filter by Status
-      if (filterStatus !== 'all' && requestStatus !== filterStatus) {
-        continue;
-      }
-
-      // 2. Filter by User
-      let userMatch = false;
-      if (filterUser === 'ALL_USERS') {
-        if (adminRole === 'superadmin') userMatch = true;
-      } else if (filterUser === 'ALL_SUBORDINATES') {
-        if (mySubordinateEmails.has(requesterEmail)) userMatch = true;
-      } else {
-        if (requesterEmail === filterUser) userMatch = true;
-      }
-
-      if (!userMatch) continue;
-
-      // 3. Security Filter: Admin can only see their subs, Superadmin can see all
-      if (adminRole === 'admin' && !mySubordinateEmails.has(requesterEmail)) {
-         continue; // This user is not in the admin's hierarchy
-      }
-
-      // --- END FILTERS ---
-
-      const startDate = new Date(row[5]);
-      const endDate = new Date(row[6]);
-      const requestedDateNum = Number(row[0].split('_')[1]);
-
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || isNaN(requestedDateNum)) {
-        Logger.log(`Skipping Row ${i+1}. It contains invalid date data.`);
-        continue; 
-      }
-
-      const requesterBalance = userData.emailToBalances[requesterEmail];
-
-      results.push({
-        requestID: row[0],
-        status: row[1],
-        requestedByName: row[3],
-        leaveType: row[4],
-        startDate: convertDateToString(startDate),
-        endDate: convertDateToString(endDate),
-        totalDays: row[7],
-        reason: row[8], // User's reason
-        requestedDate: convertDateToString(new Date(requestedDateNum)),
-        actionDate: convertDateToString(new Date(row[9])),
-        actionBy: userData.emailToName[row[10]] || row[10],
-        supervisorName: userData.emailToName[row[11]] || row[11],
-        actionByReason: row[12] || "", // NEW
-        requesterBalance: requesterBalance,
-        sickNoteUrl: row[13] || "" // <-- 
-      });
-    } catch (e) {
-       Logger.log(`Failed to process row ${i+1} for getAdminLeaveRequests. Error: ${e.message}`);
-    }
+        results.push({
+          requestID: row[0],
+          status: row[1],
+          requestedByName: row[3],
+          leaveType: row[4],
+          startDate: convertDateToString(startDate),
+          endDate: convertDateToString(endDate),
+          totalDays: row[7],
+          reason: row[8],
+          requestedDate: convertDateToString(reqDate),
+          supervisorName: userData.emailToName[assignedApprover] || assignedApprover,
+          actionBy: userData.emailToName[row[10]] || row[10],
+          actionByReason: row[12],
+          requesterBalance: userData.emailToBalances[requesterEmail],
+          sickNoteUrl: row[13]
+        });
+    } catch (e) { }
   }
   return results;
 }
 
-// REPLACE this function
 function submitLeaveRequest(submitterEmail, request, targetUserEmail) {
   const ss = getSpreadsheet();
   const dbSheet = getOrCreateSheet(ss, SHEET_NAMES.database);
   const userData = getUserDataFromDb(dbSheet);
   
-  const isSelfRequest = !targetUserEmail;
-  const requestEmail = isSelfRequest ? submitterEmail : targetUserEmail;
+  const requestEmail = (targetUserEmail || submitterEmail).toLowerCase();
   const requestName = userData.emailToName[requestEmail];
   
-  if (!requestName) {
-    throw new Error(`Could not find user ${requestEmail} in the Data Base.`);
-  }
+  if (!requestName) throw new Error(`User account ${requestEmail} not found.`);
   
-  const supervisorEmail = userData.emailToSupervisor[requestEmail];
-  if (!supervisorEmail) {
-     throw new Error(`Cannot submit request. User ${requestName} does not have a supervisor assigned in the Data Base.`);
-  }
-  
-  const reqSheet = getOrCreateSheet(ss, SHEET_NAMES.leaveRequests);
-  const startDate = new Date(request.startDate + 'T00:00:00');
-  let endDate;
-  if (request.endDate) {
-    endDate = new Date(request.endDate + 'T00:00:00');
-  } else {
-    endDate = startDate; 
+  // 1. Identify Approvers & Validate
+  const directManager = userData.emailToSupervisor[requestEmail];
+  const projectManager = userData.emailToProjectManager[requestEmail];
+
+  // CRITICAL FIX: Stop "NA" by blocking submission if Direct Manager is missing
+  if (!directManager || directManager === "" || directManager === "na") {
+    throw new Error(`Cannot submit request. User ${requestName} does not have a valid Direct Manager assigned in Employees_Core.`);
   }
 
+  // 2. Determine Workflow
+  let status = "Pending";
+  let assignedApprover = directManager;
+
+  // If Project Manager exists and is different, they approve first
+  if (projectManager && projectManager !== "" && projectManager !== directManager) {
+    status = "Pending Project Mgr";
+    assignedApprover = projectManager;
+  } else {
+    status = "Pending Direct Mgr"; 
+    assignedApprover = directManager;
+  }
+
+  // 3. Balance Check
+  const startDate = new Date(request.startDate + 'T00:00:00');
+  const endDate = request.endDate ? new Date(request.endDate + 'T00:00:00') : startDate;
   const ONE_DAY_MS = 24 * 60 * 60 * 1000;
   const totalDays = Math.round((endDate.getTime() - startDate.getTime()) / ONE_DAY_MS) + 1;
-  if (totalDays < 1) {
-    throw new Error("Invalid date range.");
-  }
   
   const balanceKey = request.leaveType.toLowerCase(); 
   const userBalances = userData.emailToBalances[requestEmail];
+  
+  // Safety check for balance existence
   if (!userBalances || userBalances[balanceKey] === undefined) {
-    throw new Error(`Could not find balance information for user ${requestName}. Check the Data Base sheet.`);
+     throw new Error(`Balance type '${request.leaveType}' not found for user.`);
   }
-
   if (userBalances[balanceKey] < totalDays) {
-    throw new Error(`Insufficient balance for ${requestName}. User has ${userBalances[balanceKey]} ${request.leaveType} days, but are requesting ${totalDays}.`);
+    throw new Error(`Insufficient ${request.leaveType} balance. Available: ${userBalances[balanceKey]}, Requested: ${totalDays}.`);
   }
 
-  // --- START NEW FILE UPLOAD LOGIC ---
-  let sickNoteUrl = ""; // Default to empty string
-
+  // 4. File Upload Logic
+  let sickNoteUrl = "";
   if (request.fileInfo) {
-    // A file was included in the request object
     try {
       const folder = DriveApp.getFolderById(SICK_NOTE_FOLDER_ID);
       const fileData = Utilities.base64Decode(request.fileInfo.data);
       const blob = Utilities.newBlob(fileData, request.fileInfo.type, request.fileInfo.name);
-      
-      // Create a unique name
-      const newFileName = `${requestName}_${new Date().toISOString()}_${request.fileInfo.name}`;
-      const newFile = folder.createFile(blob).setName(newFileName);
-      
+      const newFile = folder.createFile(blob).setName(`${requestName}_${new Date().toISOString()}_${request.fileInfo.name}`);
       sickNoteUrl = newFile.getUrl();
-    } catch (e) {
-      Logger.log("File Upload Error: " + e.message);
-      throw new Error("Failed to upload sick note file. Please try again.");
-    }
+    } catch (e) { throw new Error("File upload failed: " + e.message); }
   }
+  if (balanceKey === 'sick' && !sickNoteUrl) throw new Error("A PDF sick note is mandatory for sick leave.");
 
-  // Backend mandatory check
-  if (balanceKey === 'sick' && !sickNoteUrl) {
-    throw new Error("A PDF sick note is mandatory for sick leave.");
-  }
-  // --- END NEW FILE UPLOAD LOGIC ---
-
+  // 5. Save to Sheet (With New Columns)
+  const reqSheet = getOrCreateSheet(ss, SHEET_NAMES.leaveRequests);
   const requestID = `req_${new Date().getTime()}`;
   
   reqSheet.appendRow([
     requestID,
-    "Pending",
+    status,
     requestEmail,
     requestName,
     request.leaveType,
@@ -2532,115 +2485,119 @@ function submitLeaveRequest(submitterEmail, request, targetUserEmail) {
     request.reason,
     "", // ActionDate
     "", // ActionBy
-    supervisorEmail,
+    assignedApprover, // Col L (12): The person who must approve NOW
     "", // ActionReason
-    sickNoteUrl // <-- ADDED NEW COLUMN
+    sickNoteUrl,
+    directManager, // Col O (15): Snapshot of Direct Mgr
+    projectManager || "" // Col P (16): Snapshot of Project Mgr
   ]);
   
   SpreadsheetApp.flush(); 
   
-  return `Leave request submitted successfully for ${requestName}.`;
+  // Format the approver name for the success message
+  const approverName = userData.emailToName[assignedApprover] || assignedApprover;
+  return `Request submitted successfully. It is now ${status} (${approverName}).`;
 }
 
 function approveDenyRequest(adminEmail, requestID, newStatus, reason) {
-  const ss = getSpreadsheet(); 
+  const ss = getSpreadsheet();
   const dbSheet = getOrCreateSheet(ss, SHEET_NAMES.database); 
   const userData = getUserDataFromDb(dbSheet); 
-  const adminRole = userData.emailToRole[adminEmail] || 'agent'; 
-  const adminName = userData.emailToName[adminEmail] || adminEmail; 
   
-  // --- START MODIFICATION ---
-  // Get the admin's full hierarchy, regardless of role (admin/superadmin)
-  const mySubordinateEmails = new Set(webGetAllSubordinateEmails(adminEmail)); 
+  // Security Check
+  const adminRole = userData.emailToRole[adminEmail] || 'agent';
+  if (adminRole === 'agent') throw new Error("Permission denied.");
 
-  if (adminRole === 'agent') { // <-- Changed from original check
-    throw new Error("Permission denied. Only admins can take this action."); 
-  }
-  // --- END MODIFICATION ---
-  
   const reqSheet = getOrCreateSheet(ss, SHEET_NAMES.leaveRequests); 
-  const allData = reqSheet.getDataRange().getValues(); 
+  const allData = reqSheet.getDataRange().getValues();
   
+  let rowIndex = -1;
+  let requestRow = [];
+
+  // Find Request
   for (let i = 1; i < allData.length; i++) { 
     if (allData[i][0] === requestID) { 
-      const row = allData[i]; 
-      const status = row[1]; 
-      
-      if (status !== 'Pending') { 
-        throw new Error(`This request has already been ${status.toLowerCase()}.`); 
-      }
-      
-      const supervisorEmail = (row[11] || "").toLowerCase(); // Get the email of the supervisor assigned to the request 
-      
-      // --- START MODIFICATION ---
-      // NEW HIERARCHY CHECK:
-      // The approver must be the assigned supervisor OR a manager of the assigned supervisor.
-      if (supervisorEmail !== adminEmail.toLowerCase() && !mySubordinateEmails.has(supervisorEmail)) { 
-        throw new Error("Permission denied. You can only approve requests assigned to you or to a supervisor in your reporting line."); 
-      }
-      // --- END MODIFICATION ---
-      
-      const reqEmail = row[2]; 
-      const reqName = row[3]; 
-      const reqLeaveType = row[4]; 
-      const reqStartDate = new Date(row[5]); 
-      const reqEndDate = new Date(row[6]); 
-      const reqStartDateStr = Utilities.formatDate(reqStartDate, Session.getScriptTimeZone(), "yyyy-MM-dd"); 
-      const reqEndDateStr = Utilities.formatDate(reqEndDate, Session.getScriptTimeZone(), "yyyy-MM-dd"); 
-      const totalDays = row[7]; 
-      let scheduleResult = ""; 
-      
-      if (newStatus === 'Approved') { 
-      
-        const balanceKey = reqLeaveType.toLowerCase(); 
-        const balanceCol = { annual: 4, sick: 5, casual: 6 }[balanceKey]; 
-        
-        if (!balanceCol) { 
-          throw new Error(`Unknown leave type: ${reqLeaveType}. Balance cannot be deducted.`); 
-        }
-        
-        const userRow = userData.emailToRow[reqEmail]; 
-        
-        if (!userRow) { 
-          throw new Error(`Could not find user ${reqName} in Data Base to deduct balance.`); 
-        }
-        
-        const balanceRange = dbSheet.getRange(userRow, balanceCol); 
-        const currentBalance = parseFloat(balanceRange.getValue()) || 0; 
-        
-        if (currentBalance < totalDays) { 
-          throw new Error(`Cannot approve. User only has ${currentBalance} ${reqLeaveType} days, but request is for ${totalDays}.`); 
-        }
-        
-        balanceRange.setValue(currentBalance - totalDays); 
-        
-        scheduleResult = submitScheduleRange( 
-          adminEmail, reqEmail, reqName, 
-          reqStartDateStr, reqEndDateStr, 
-          "", "", reqLeaveType 
-        );
-        
-        reqSheet.getRange(i + 1, 2).setValue(newStatus); 
-        reqSheet.getRange(i + 1, 10).setValue(new Date()); 
-        reqSheet.getRange(i + 1, 11).setValue(adminEmail); 
-        reqSheet.getRange(i + 1, 13).setValue(reason || ""); 
-        
-      } else {
-        reqSheet.getRange(i + 1, 2).setValue(newStatus); 
-        reqSheet.getRange(i + 1, 10).setValue(new Date()); 
-        reqSheet.getRange(i + 1, 11).setValue(adminEmail); 
-        reqSheet.getRange(i + 1, 13).setValue(reason || ""); 
-      }
-
-      if (newStatus === 'Approved') { 
-        return `Request approved. ${scheduleResult}`; 
-      } else {
-        return "Request has been denied."; 
-      }
+      rowIndex = i + 1;
+      requestRow = allData[i];
+      break; 
     }
   }
+  if (rowIndex === -1) throw new Error("Request ID not found.");
+
+  const currentStatus = requestRow[1]; // Column B
+  const assignedApprover = (requestRow[11] || "").toLowerCase(); // Column L
+  const requesterEmail = requestRow[2];
+
+  // 1. Validate Approver
+  // Superadmins can override, otherwise must be the assigned approver
+  if (adminRole !== 'superadmin' && assignedApprover !== adminEmail) {
+    throw new Error("This request is not currently assigned to you for approval.");
+  }
+
+  // 2. Handle Denial (Immediate Stop)
+  if (newStatus === 'Denied') {
+    reqSheet.getRange(rowIndex, 2).setValue("Denied");
+    reqSheet.getRange(rowIndex, 10).setValue(new Date());
+    reqSheet.getRange(rowIndex, 11).setValue(adminEmail);
+    reqSheet.getRange(rowIndex, 13).setValue(reason || "Denied by " + adminEmail);
+    return "Request denied.";
+  }
+
+  // 3. Handle Approval Logic (State Machine)
   
-  throw new Error("Could not find the request ID."); 
+  // CASE A: Project Manager Approving -> Move to Direct Manager
+  if (currentStatus === "Pending Project Mgr") {
+    const directManager = userData.emailToSupervisor[requesterEmail];
+    if (!directManager) throw new Error("Direct Manager not found for next step.");
+
+    reqSheet.getRange(rowIndex, 2).setValue("Pending Direct Mgr"); // Update Status
+    reqSheet.getRange(rowIndex, 12).setValue(directManager);       // Update Assigned Approver
+    reqSheet.getRange(rowIndex, 13).setValue(`Project Mgr (${adminEmail}) Approved. Forwarded to Direct Mgr.`); // Log history in reason
+    
+    return "Project Manager Approval Recorded. Request forwarded to Direct Manager.";
+  }
+
+  // CASE B: Direct Manager Approving -> Finalize
+  if (currentStatus === "Pending Direct Mgr" || currentStatus === "Pending") {
+    // Deduct Balance Logic
+    const leaveType = requestRow[4];
+    const totalDays = requestRow[7];
+    const balanceKey = leaveType.toLowerCase();
+    
+    // Map balance columns (Standard: Annual=H(7), Sick=I(8), Casual=J(9)) 
+    // *Note: Index in array is 0-based, Column in sheet is 1-based.
+    // getUserDataFromDb mapped these. Let's find the Col index dynamically or assume standard.
+    // Standard Core Sheet: Annual(H=8), Sick(I=9), Casual(J=10) based on new structure?
+    // Let's use getUserDataFromDb row index mapping.
+    
+    const userDBRow = userData.emailToRow[requesterEmail];
+    const colMap = { "annual": 8, "sick": 9, "casual": 10 }; // Matches Employees_Core structure
+    const balanceCol = colMap[balanceKey];
+
+    if (balanceCol) {
+      const balanceRange = dbSheet.getRange(userDBRow, balanceCol);
+      const currentBal = balanceRange.getValue();
+      balanceRange.setValue(currentBal - totalDays);
+    }
+
+    // Submit Schedule (Auto-log)
+    // Call existing submitScheduleRange logic
+    const reqName = requestRow[3];
+    const reqStartDateStr = Utilities.formatDate(new Date(requestRow[5]), Session.getScriptTimeZone(), "yyyy-MM-dd");
+    const reqEndDateStr = Utilities.formatDate(new Date(requestRow[6]), Session.getScriptTimeZone(), "yyyy-MM-dd");
+    
+    submitScheduleRange(adminEmail, requesterEmail, reqName, reqStartDateStr, reqEndDateStr, "", "", leaveType);
+
+    // Finalize Request Sheet
+    reqSheet.getRange(rowIndex, 2).setValue("Approved");
+    reqSheet.getRange(rowIndex, 10).setValue(new Date());
+    reqSheet.getRange(rowIndex, 11).setValue(adminEmail);
+    reqSheet.getRange(rowIndex, 13).setValue(reason || "");
+
+    return "Final Approval Granted. Schedule updated and balance deducted.";
+  }
+
+  return "Error: Invalid Request Status.";
 }
 
 // ================= NEW/MODIFIED FUNCTIONS =================
@@ -3399,59 +3356,56 @@ function _SETUP_DEFAULT_TEMPLATE() {
 
 
 /**
- * REPLACES webSetMySupervisor.
- * New user submits their chosen supervisor. This logs it for approval.
+ * NEW: User submits full registration details + 2 managers.
  */
-function webSubmitSupervisorSelection(supervisorEmail) {
+function webSubmitFullRegistration(form) {
   try {
     const userEmail = Session.getActiveUser().getEmail().toLowerCase();
     const ss = getSpreadsheet();
-    const dbSheet = getOrCreateSheet(ss, SHEET_NAMES.database);
-    const userData = getUserDataFromDb(dbSheet);
+    const dbSheet = getOrCreateSheet(ss, SHEET_NAMES.database); // Or employeesCore in new version?
+    // Note: We use getUserDataFromDb to get the name, assuming user exists in Core from Phase 1 migration
+    // If completely new user, they exist in DB from auto-creation in getUserInfo
+    const userData = getUserDataFromDb(dbSheet); 
     const regSheet = getOrCreateSheet(ss, SHEET_NAMES.pendingRegistrations);
 
-    const userName = userData.emailToName[userEmail];
-    if (!userName) {
-      throw new Error("Your user account could not be found.");
-    }
-    
-    // Validate the selection
-    const supervisorName = userData.emailToName[supervisorEmail];
-    if (!supervisorName) {
-      throw new Error("The selected supervisor is not a valid user.");
-    }
+    // Find user name (auto-created in getUserInfo)
+    let userName = userEmail;
+    const userObj = userData.userList.find(u => u.email === userEmail);
+    if (userObj) userName = userObj.name;
 
-    // Check for an existing request
-    const existing = regSheet.getDataRange().getValues();
-    let existingRequestID = null;
-    let existingStatus = null;
-    for (let i = 1; i < existing.length; i++) {
-      if (existing[i][1] === userEmail) {
-        existingRequestID = existing[i][0];
-        existingStatus = existing[i][4];
-        break;
+    // Validate inputs
+    if (!form.directManager || !form.functionalManager) throw new Error("Both Direct and Functional managers are required.");
+    if (!form.address || !form.phone) throw new Error("Address and Phone are required.");
+    if (form.directManager === form.functionalManager) throw new Error("Direct and Functional Manager cannot be the same person.");
+
+    // Check for existing pending request
+    const data = regSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      // Check if user has a row that is NOT fully rejected
+      if (data[i][1] === userEmail && (data[i][5] === 'Pending' || data[i][6] === 'Pending')) {
+        throw new Error("You already have a pending registration request.");
       }
     }
 
-    if (existingStatus === 'Pending') {
-      throw new Error("You already have a pending submission.");
-    }
+    const requestID = `REG-${new Date().getTime()}`;
 
-    // Log the new request (or update the old 'Denied' one)
-    const requestID = existingRequestID || `reg_${new Date().getTime()}`;
     regSheet.appendRow([
       requestID,
       userEmail,
       userName,
-      supervisorEmail,
-      "Pending",
+      form.directManager,     // Direct Manager Email
+      form.functionalManager, // Functional Manager Email
+      "Pending",              // Direct Status
+      "Pending",              // Functional Status
+      form.address,
+      form.phone,
       new Date()
     ]);
 
-    return "Submission received! Your account is pending final approval by an administrator. Please check back later.";
+    return "Registration submitted! Both managers must approve your account.";
 
   } catch (err) {
-    Logger.log("webSubmitSupervisorSelection Error: " + err.message);
+    Logger.log("webSubmitFullRegistration Error: " + err.message);
     return "Error: " + err.message;
   }
 }
@@ -3477,134 +3431,211 @@ function webGetMyRegistrationStatus() {
 }
 
 /**
- * For the Superadmin/Admin to load the approval queue.
- * MODIFIED: Allows Admins to see requests for their subordinates.
+ * NEW: Admins see requests where THEY are the approver.
  */
 function webGetPendingRegistrations() {
   try {
     const adminEmail = Session.getActiveUser().getEmail().toLowerCase();
     const ss = getSpreadsheet();
-    const dbSheet = getOrCreateSheet(ss, SHEET_NAMES.database);
-    const userData = getUserDataFromDb(dbSheet);
-    
-    // --- MODIFIED PERMISSION CHECK ---
+    const dbSheet = getOrCreateSheet(ss, SHEET_NAMES.employeesCore); 
+    const userData = getUserDataFromDb(ss);
     const adminRole = userData.emailToRole[adminEmail] || 'agent';
-    if (adminRole !== 'admin' && adminRole !== 'superadmin') {
-      throw new Error("Permission denied. Only admins and superadmins can approve new users.");
-    }
-    // --- END MODIFICATION ---
 
-    // --- NEW: Get Admin's team for filtering ---
-    let myTeamEmails = new Set();
-    if (adminRole === 'admin') {
-      // webGetAllSubordinateEmails includes the admin's own email
-      myTeamEmails = new Set(webGetAllSubordinateEmails(adminEmail));
-    }
-    // --- END NEW ---
+    if (adminRole === 'agent') throw new Error("Permission denied.");
 
     const regSheet = getOrCreateSheet(ss, SHEET_NAMES.pendingRegistrations);
     const data = regSheet.getDataRange().getValues();
     const pending = [];
+
+    // Indexes: 0:ID, 1:Email, 2:Name, 3:DirectMgr, 4:FuncMgr, 5:DirectStatus, 6:FuncStatus, 7:Addr, 8:Phone, 9:Time
     
-    // --- MODIFIED LOOP with filtering ---
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
-      const status = row[4];
-      const selectedSupervisorEmail = (row[3] || "").toLowerCase();
+      const reqId = row[0];
+      const directMgr = (row[3] || "").toLowerCase();
+      const funcMgr = (row[4] || "").toLowerCase();
+      const directStatus = row[5];
+      const funcStatus = row[6];
 
-      if (status === "Pending") {
-        
-        let canView = false;
-        if (adminRole === 'superadmin') {
-          // Superadmin can see all
-          canView = true;
-        } else if (adminRole === 'admin' && myTeamEmails.has(selectedSupervisorEmail)) {
-          // Admin can see if the selected supervisor is in their hierarchy
-          canView = true;
-        }
-        
-        if (canView) {
-          pending.push({
-            requestID: row[0],
-            userEmail: row[1],
-            userName: row[2],
-            selectedSupervisorEmail: selectedSupervisorEmail, // Use cleaned variable
-            supervisorName: userData.emailToName[selectedSupervisorEmail] || 'Unknown Supervisor',
-            timestamp: convertDateToString(row[5])
-          });
+      let actionRequired = false;
+      let myRoleInRequest = "";
+
+      // Superadmin sees all
+      if (adminRole === 'superadmin') {
+        if (directStatus === 'Pending') { actionRequired = true; myRoleInRequest = "Direct"; }
+        else if (funcStatus === 'Pending') { actionRequired = true; myRoleInRequest = "Functional"; }
+      } else {
+        // Normal Admin: Check if I am one of the managers AND my part is pending
+        if (directMgr === adminEmail && directStatus === 'Pending') {
+          actionRequired = true;
+          myRoleInRequest = "Direct";
+        } else if (funcMgr === adminEmail && funcStatus === 'Pending') {
+          actionRequired = true;
+          myRoleInRequest = "Functional";
         }
       }
-    }
-    // --- END MODIFICATION ---
 
-    return pending.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)); // Newest first
+      if (actionRequired) {
+        pending.push({
+          requestID: reqId,
+          userEmail: row[1],
+          userName: row[2],
+          approverRole: myRoleInRequest, // Tell frontend which button to show
+          otherStatus: myRoleInRequest === "Direct" ? `Functional: ${funcStatus}` : `Direct: ${directStatus}`,
+          timestamp: convertDateToString(new Date(row[9]))
+        });
+      }
+    }
+
+    return pending.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+
   } catch (e) {
-    return { error: e.message };
-}
-}
-
-// REPLACE this function
-/**
- * For the Superadmin/Admin to action the request.
- * MODIFIED: Now accepts hiringDateStr
- */
-function webApproveDenyRegistration(requestID, userEmail, selectedSupervisorEmail, newStatus, hiringDateStr) {
-  try {
-    const adminEmail = Session.getActiveUser().getEmail().toLowerCase();
-    const ss = getSpreadsheet(); 
-    const dbSheet = getOrCreateSheet(ss, SHEET_NAMES.database); 
-    const userData = getUserDataFromDb(dbSheet);
-    
-    const adminRole = userData.emailToRole[adminEmail] || 'agent';
-    if (adminRole === 'agent') { 
-      throw new Error("Permission denied.");
-    }
-    
-    const myTeamEmails = new Set(webGetAllSubordinateEmails(adminEmail));
-    if (!myTeamEmails.has(selectedSupervisorEmail.toLowerCase())) { 
-      throw new Error("Permission denied. You can only Approve or Deny registrations for users who have selected a supervisor in your reporting line.");
-    }
-
-    // 1. Update the PendingRegistrations sheet
-    const regSheet = getOrCreateSheet(ss, SHEET_NAMES.pendingRegistrations);
-    const regData = regSheet.getDataRange().getValues(); 
-    let regRow = -1; 
-    for (let i = 1; i < regData.length; i++) { 
-      if (regData[i][0] === requestID && regData[i][4] === 'Pending') { 
-        regRow = i + 1;
-        break; 
-      }
-    }
-    if (regRow === -1) { 
-      throw new Error("Could not find the registration request.");
-    }
-    regSheet.getRange(regRow, 5).setValue(newStatus); // Set Status (Column E) 
-    regSheet.getRange(regRow, 1, 1, regSheet.getLastColumn()).setBackground("#f4f4f4");
-
-    // 2. If Approved, update the Data Base
-    if (newStatus === 'Approved') {
-      // *** NEW: Validate hiring date ***
-      if (!hiringDateStr || isNaN(new Date(hiringDateStr).getTime())) {
-        throw new Error("A valid Hiring Date is required to approve a user.");
-      }
-      const hiringDate = new Date(hiringDateStr);
-      // *** END NEW ***
-
-      const userDBRow = userData.emailToRow[userEmail];
-      if (!userDBRow) { 
-        throw new Error(`Could not find user ${userEmail} in Data Base to approve.`);
-      }
-      dbSheet.getRange(userDBRow, 7).setValue(selectedSupervisorEmail); // Set SupervisorEmail (Col G) 
-      dbSheet.getRange(userDBRow, 8).setValue("Active"); // Set AccountStatus (Col H) 
-      dbSheet.getRange(userDBRow, 9).setValue(hiringDate); // *** NEW: Set HiringDate (Col I) ***
-    }
-    
-    SpreadsheetApp.flush(); 
-    return { success: true, message: `User registration ${newStatus.toLowerCase()}.` };
-  } catch (e) {
-    Logger.log(`webApproveDenyRegistration Error: ${e.message}`); 
     return { error: e.message };
   }
+}
+
+/**
+ * NEW: Approves one side of the request. If both approved -> HIRE.
+ */
+function webApproveDenyRegistration(requestID, newStatus, hiringDateStr) {
+  try {
+    const adminEmail = Session.getActiveUser().getEmail().toLowerCase();
+    const ss = getSpreadsheet();
+    
+    const regSheet = getOrCreateSheet(ss, SHEET_NAMES.pendingRegistrations);
+    const data = regSheet.getDataRange().getValues();
+    let rowIndex = -1;
+    
+    // Find request
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === requestID) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+    if (rowIndex === -1) throw new Error("Request not found.");
+
+    // Get current row data
+    const row = regSheet.getRange(rowIndex, 1, 1, 10).getValues()[0];
+    const directMgr = (row[3] || "").toLowerCase();
+    const funcMgr = (row[4] || "").toLowerCase();
+    
+    // Determine which column to update based on who clicked
+    // 6 = DirectStatus (Col F), 7 = FuncStatus (Col G)
+    let colToUpdate = 0;
+    
+    // Use the userRole to allow Superadmin override, otherwise strict check
+    const userData = getUserDataFromDb(ss);
+    const adminRole = userData.emailToRole[adminEmail];
+
+    if (adminRole === 'superadmin') {
+        // Superadmin approves whichever is pending, prioritizing Direct
+        if (row[5] === 'Pending') colToUpdate = 6;
+        else if (row[6] === 'Pending') colToUpdate = 7;
+    } else {
+        if (directMgr === adminEmail) colToUpdate = 6;
+        else if (funcMgr === adminEmail) colToUpdate = 7;
+        else throw new Error("You are not listed as a manager for this request.");
+    }
+
+    // Update the specific status
+    regSheet.getRange(rowIndex, colToUpdate).setValue(newStatus);
+
+    // === CHECK FINAL STATUS ===
+    // Re-read values after update
+    const updatedDirect = (colToUpdate === 6) ? newStatus : row[5];
+    const updatedFunc = (colToUpdate === 7) ? newStatus : row[6];
+
+    if (newStatus === 'Denied') {
+       // If either denies, the whole thing is dead. Logic to notify user could go here.
+       return { success: true, message: "Registration denied." };
+    }
+
+    // IF BOTH APPROVED -> ACTIVATE USER
+    if (updatedDirect === 'Approved' && updatedFunc === 'Approved') {
+       return activateUser(ss, row, hiringDateStr);
+    }
+
+    return { success: true, message: `Marked as ${newStatus}. Waiting for other manager.` };
+
+  } catch (e) {
+    Logger.log("webApproveDenyRegistration Error: " + e.message);
+    return { error: e.message };
+  }
+}
+
+// Helper to finalize activation
+function activateUser(ss, regRow, hiringDateStr) {
+  const userEmail = regRow[1];
+  const userName = regRow[2];
+  const directMgr = regRow[3];
+  const funcMgr = regRow[4];
+  const address = regRow[7];
+  const phone = regRow[8];
+  
+  // Update Core & PII
+  const coreSheet = getOrCreateSheet(ss, SHEET_NAMES.employeesCore);
+  const piiSheet = getOrCreateSheet(ss, SHEET_NAMES.employeesPII);
+  
+  // 1. Find user in Core (created during auto-registration in getUserInfo)
+  // Or if they don't exist, append. But usually they exist as "Pending".
+  const coreData = coreSheet.getDataRange().getValues();
+  let coreRow = -1;
+  for(let i=1; i<coreData.length; i++) {
+      if (coreData[i][2] === userEmail) { // Col C is Email
+          coreRow = i + 1;
+          break;
+      }
+  }
+  
+  if (coreRow === -1) throw new Error("User record missing in Core DB.");
+  
+  // Update Core: Status, Managers
+  coreSheet.getRange(coreRow, 5).setValue("Active"); // Status
+  coreSheet.getRange(coreRow, 6).setValue(directMgr);
+  coreSheet.getRange(coreRow, 7).setValue(funcMgr);
+  
+  // Update PII: Address, Phone, Hiring Date
+  // Need to find PII row by EmployeeID. 
+  const empID = coreSheet.getRange(coreRow, 1).getValue();
+  
+  const piiData = piiSheet.getDataRange().getValues();
+  let piiRow = -1;
+  for(let i=1; i<piiData.length; i++) {
+      if (piiData[i][0] === empID) {
+          piiRow = i + 1;
+          break;
+      }
+  }
+  
+  // If PII row doesn't exist (migration gap), create it
+  if (piiRow === -1) {
+      piiSheet.appendRow([empID, new Date(hiringDateStr), "", "", address, phone, "", ""]);
+  } else {
+      piiSheet.getRange(piiRow, 2).setValue(new Date(hiringDateStr));
+      piiSheet.getRange(piiRow, 5).setValue(address);
+      piiSheet.getRange(piiRow, 6).setValue(phone);
+  }
+  
+  // Create Folders
+   try {
+      const rootFolders = DriveApp.getFoldersByName("KOMPASS_HR_Files");
+      if (rootFolders.hasNext()) {
+        const root = rootFolders.next();
+        const empFolders = root.getFoldersByName("Employee_Files");
+        if (empFolders.hasNext()) {
+          const parent = empFolders.next();
+          const personalFolder = parent.createFolder(`${userName}_${empID}`);
+          personalFolder.createFolder("Payslips");
+          personalFolder.createFolder("Onboarding_Docs");
+          personalFolder.createFolder("Sick_Notes");
+        }
+      }
+    } catch (e) {
+      Logger.log("Folder creation error: " + e.message);
+    }
+
+  return { success: true, message: "User fully approved and activated!" };
 }
 // --- ADD TO THE END OF code.gs ---
 
@@ -4431,7 +4462,8 @@ function webSaveProject(projectData) {
 // ==========================================
 
 /**
- * PUBLIC: Saves a new application from Recruitment.html
+ * 3. SUBMIT APPLICATION (Public) - UPGRADED
+ * Now captures National ID, Languages, Referrer, etc.
  */
 function webSubmitApplication(data) {
   const ss = getSpreadsheet();
@@ -4443,14 +4475,20 @@ function webSubmitApplication(data) {
     data.name,
     data.email,
     data.phone,
-    data.position,
+    data.position, // This might now be a Requisition ID or Title
     data.cv,
-    "New",           // Status
-    "Applied",       // Stage
-    "", "", "", "",  // Interview Scores/Notes
-    new Date()       // Applied Date
+    "New",         // Status
+    "Applied",     // Stage
+    "", "", "", "",// Interview Scores/Notes (Placeholders)
+    new Date(),    // Applied Date
+    // --- NEW PHASE 3 COLUMNS ---
+    data.nationalId || "",
+    data.langLevel || "",
+    data.secondLang || "",
+    data.referrer || "",
+    "", "", "", "", // Feedback Columns (HR, Mgmt, Tech, Client)
+    "Pending"       // Offer Status
   ]);
-  
   return "Success";
 }
 
@@ -4570,57 +4608,91 @@ function webUpdateCandidateStatus(candidateId, newStatus, newStage) {
  * 3. Creates Google Drive Folders
  * 4. Updates Candidate status to "Hired"
  */
-function webHireCandidate(candidateId) {
+function webHireCandidate(candidateId, hiringData) {
   const ss = getSpreadsheet();
   const candSheet = getOrCreateSheet(ss, SHEET_NAMES.recruitment);
   const coreSheet = getOrCreateSheet(ss, SHEET_NAMES.employeesCore);
   const piiSheet = getOrCreateSheet(ss, SHEET_NAMES.employeesPII);
   
-  const data = candSheet.getDataRange().getValues();
+  // A. Find Candidate
+  const candData = candSheet.getDataRange().getValues();
+  let candRow = -1;
   let candidate = null;
-  let rowIndex = -1;
 
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] === candidateId) {
+  for (let i = 1; i < candData.length; i++) {
+    if (candData[i][0] === candidateId) {
+      candRow = i + 1;
       candidate = {
-        name: data[i][1],
-        email: data[i][2],
-        phone: data[i][3],
-        position: data[i][4]
+        name: candData[i][1],
+        email: candData[i][2],
+        phone: candData[i][3],
+        nationalId: candData[i][13] // Adjust index based on where you added columns
       };
-      rowIndex = i + 1;
       break;
     }
   }
+  
+  if (!candidate) throw new Error("Candidate not found.");
 
-  if (!candidate) throw new Error("Candidate not found");
-
-  // 1. Generate Employee ID
+  // B. Generate Employee ID
   const lastRow = coreSheet.getLastRow();
-  const newEmpId = `KOM-${1000 + lastRow}`; // Simple auto-increment logic
+  const newEmpId = `KOM-${1000 + lastRow}`;
 
-  // 2. Add to Core
+  // C. Create CORE Record
+  // Columns: ID, Name, Email, Role, Status, DirectMgr, FuncMgr, Balances(3), 
+  //          Gender, EmpType, Contract, JobLevel, Dept, Func, SubFunc, GCM, Scope, Off/On, Dotted, ProjMgr, Bonus, N_Level, Exit, Status
   coreSheet.appendRow([
     newEmpId,
-    candidate.name,
-    candidate.email,
-    'agent',       // Default Role
-    'Active',      // Account Status (Auto-active because HR hired them)
-    '',            // Direct Manager (To be assigned later)
-    '',            // Functional Manager
-    0, 0, 0        // Balances
+    hiringData.fullName || candidate.name,
+    hiringData.konectaEmail, // Created by IT/HR
+    'agent',                 // Default Role
+    'Active',                // Status
+    hiringData.directManager,
+    hiringData.functionalManager,
+    0, 0, 0,                 // Balances (0 start)
+    hiringData.gender,
+    hiringData.empType,      // Perm/Temp
+    hiringData.contractType,
+    hiringData.jobLevel,
+    hiringData.department,
+    hiringData.function,
+    hiringData.subFunction,
+    hiringData.gcm,
+    hiringData.scope,
+    hiringData.shore,        // Offshore/Onshore
+    hiringData.dottedManager,
+    hiringData.projectManager,
+    hiringData.bonusPlan,
+    hiringData.nLevel,
+    "",                      // Exit Date
+    "Active"                 // Redundant Status check
   ]);
 
-  // 3. Add to PII
+  // D. Create PII Record
+  // Columns: ID, HiringDate, Salary, IBAN, Address, Phone, Medical, Contract,
+  //          NatID, Passport, SocialIns, BirthDate, PersonalEmail, Marital, Dependents, Emergency, Relation, Salary, Hourly
   piiSheet.appendRow([
     newEmpId,
-    new Date(),    // Hiring Date (Today)
-    "", "", "", 
-    candidate.phone, // Phone from application
-    "", ""
+    hiringData.hiringDate,
+    hiringData.salary,
+    hiringData.iban,
+    hiringData.address,
+    candidate.phone,
+    "", "", // Medical, Contract Doc Link
+    candidate.nationalId,
+    hiringData.passport,
+    hiringData.socialInsurance,
+    hiringData.birthDate,
+    candidate.email, // Personal Email from application
+    hiringData.maritalStatus,
+    hiringData.dependents,
+    hiringData.emergencyContact,
+    hiringData.emergencyRelation,
+    hiringData.salary, // (Duplicate column in PII for safety)
+    hiringData.hourlyRate
   ]);
 
-  // 4. Create Folders (Reusing logic from Phase 1)
+  // E. Create Drive Folders (Existing Logic)
   try {
     const rootFolders = DriveApp.getFoldersByName("KOMPASS_HR_Files");
     if (rootFolders.hasNext()) {
@@ -4634,13 +4706,516 @@ function webHireCandidate(candidateId) {
         personalFolder.createFolder("Sick_Notes");
       }
     }
-  } catch (e) {
-    Logger.log("Folder creation error: " + e.message);
-  }
+  } catch (e) { Logger.log("Folder creation error: " + e.message); }
 
-  // 5. Update Candidate Sheet
-  candSheet.getRange(rowIndex, 7).setValue("Hired");
-  candSheet.getRange(rowIndex, 8).setValue("Onboarding");
+  // F. Update Candidate Sheet
+  candSheet.getRange(candRow, 7).setValue("Hired"); // Status
+  candSheet.getRange(candRow, 8).setValue("Onboarding"); // Stage
 
   return `Successfully hired ${candidate.name}. Employee ID: ${newEmpId}`;
+}
+
+/**
+ * ======================================================================
+ * PHASE 5 DATABASE UPGRADE SCRIPT (FIXED)
+ * ACTION: RUN THIS FUNCTION AGAIN.
+ * PURPOSE: Expands existing sheets and creates new ones for the HRIS system.
+ * ======================================================================
+ */
+function _SETUP_PHASE_5_DATABASE() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  Logger.log("Starting Phase 5 Database Upgrade...");
+
+  // --- 1. CREATE NEW SHEETS ---
+  
+  // 1.1 Requisitions (Job Openings)
+  const reqSheet = getOrCreateSheet(ss, SHEET_NAMES.requisitions);
+  // FIX: Check if lastRow is 0 (new sheet) OR 1 (potentially empty header)
+  if (reqSheet.getLastRow() === 0 || (reqSheet.getLastRow() === 1 && reqSheet.getRange("A1").getValue() === "")) {
+    reqSheet.getRange("A1:H1").setValues([[
+      "ReqID", "Title", "Department", "HiringManager", "OpenDate", 
+      "Status", "PoolCandidates", "JobDescription"
+    ]]);
+    reqSheet.setFrozenRows(1);
+    Logger.log("Created 'Requisitions' sheet with headers.");
+  }
+
+  // 1.2 Performance Reviews
+  const perfSheet = getOrCreateSheet(ss, SHEET_NAMES.performance);
+  if (perfSheet.getLastRow() === 0 || (perfSheet.getLastRow() === 1 && perfSheet.getRange("A1").getValue() === "")) {
+    perfSheet.getRange("A1:G1").setValues([[
+      "ReviewID", "EmployeeID", "Year", "ReviewPeriod", "Rating", 
+      "ManagerComments", "Date"
+    ]]);
+    perfSheet.setFrozenRows(1);
+    Logger.log("Created 'Performance_Reviews' sheet with headers.");
+  }
+
+  // 1.3 Employee History (Promotions/Transfers)
+  const histSheet = getOrCreateSheet(ss, SHEET_NAMES.historyLogs);
+  if (histSheet.getLastRow() === 0 || (histSheet.getLastRow() === 1 && histSheet.getRange("A1").getValue() === "")) {
+    histSheet.getRange("A1:F1").setValues([[
+      "HistoryID", "EmployeeID", "Date", "EventType", 
+      "OldValue", "NewValue"
+    ]]);
+    histSheet.setFrozenRows(1);
+    Logger.log("Created 'Employee_History' sheet with headers.");
+  }
+
+  // --- 2. EXPAND EXISTING SHEETS ---
+
+  // 2.1 Expand Employees_Core
+  const coreSheet = ss.getSheetByName(SHEET_NAMES.employeesCore);
+  if (coreSheet) {
+    const newCoreCols = [
+      "Gender", "EmploymentType", "ContractType", "JobLevel", "Department",
+      "Function", "SubFunction", "GCMLevel", "Scope", "OffshoreOnshore",
+      "DottedManager", "ProjectManagerEmail", "BonusPlan", "N_Level", 
+      "ExitDate", "Status" 
+    ];
+    addColumnsToSheet(coreSheet, newCoreCols);
+    Logger.log("Updated 'Employees_Core' with new HR columns.");
+  } else {
+    Logger.log("ERROR: Employees_Core sheet not found. Run Phase 1 setup first.");
+  }
+
+  // 2.2 Expand Employees_PII
+  const piiSheet = ss.getSheetByName(SHEET_NAMES.employeesPII);
+  if (piiSheet) {
+    const newPiiCols = [
+      "NationalID", "PassportNumber", "SocialInsuranceNumber", "BirthDate",
+      "PersonalEmail", "MaritalStatus", "DependentsInfo", "EmergencyContact",
+      "EmergencyRelation", "Salary", "HourlyRate"
+    ];
+    addColumnsToSheet(piiSheet, newPiiCols);
+    
+    // Set Date Format for BirthDate column
+    try {
+      const headers = piiSheet.getRange(1, 1, 1, piiSheet.getLastColumn()).getValues()[0];
+      const dobIndex = headers.indexOf("BirthDate") + 1;
+      if (dobIndex > 0) piiSheet.getRange(2, dobIndex, piiSheet.getMaxRows(), 1).setNumberFormat("yyyy-mm-dd");
+    } catch (e) {
+      Logger.log("Could not set date format (sheet might be empty): " + e.message);
+    }
+    
+    Logger.log("Updated 'Employees_PII' with new sensitive columns.");
+  }
+
+  // 2.3 Update Recruitment_Candidates
+  const recSheet = ss.getSheetByName(SHEET_NAMES.recruitment);
+  if (recSheet) {
+    const newRecCols = [
+      "NationalID", "LanguageLevel", "SecondLanguage", "Referrer", 
+      "HR_Feedback", "Management_Feedback", "Technical_Feedback", 
+      "Client_Feedback", "OfferStatus"
+    ];
+    addColumnsToSheet(recSheet, newRecCols);
+    Logger.log("Updated 'Recruitment_Candidates' with feedback columns.");
+  }
+
+  Logger.log("Phase 5 Database Upgrade Complete!");
+}
+
+/**
+ * HELPER: specific to this upgrade script.
+ * Adds missing columns to the end of a sheet's header row.
+ * FIX: Handles empty sheets correctly.
+ */
+function addColumnsToSheet(sheet, newHeaders) {
+  const lastCol = sheet.getLastColumn();
+
+  // Case 1: Sheet is completely empty
+  if (lastCol === 0) {
+    if (newHeaders.length > 0) {
+      sheet.getRange(1, 1, 1, newHeaders.length).setValues([newHeaders]);
+    }
+    return;
+  }
+
+  // Case 2: Sheet has existing data, append only new columns
+  const currentHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const headersToAdd = [];
+
+  newHeaders.forEach(header => {
+    if (!currentHeaders.includes(header)) {
+      headersToAdd.push(header);
+    }
+  });
+
+  if (headersToAdd.length > 0) {
+    // Append to the next available column
+    sheet.getRange(1, lastCol + 1, 1, headersToAdd.length).setValues([headersToAdd]);
+  }
+}
+function debugDatabaseMapping() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName("Employees_Core");
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  
+  Logger.log("--- DEBUGGING HEADERS ---");
+  Logger.log("All Headers: " + headers.join(", "));
+  
+  const dmIndex = headers.indexOf("DirectManagerEmail");
+  const pmIndex = headers.indexOf("ProjectManagerEmail");
+  
+  Logger.log(`DirectManagerEmail Index: ${dmIndex} (Should be > -1)`);
+  Logger.log(`ProjectManagerEmail Index: ${pmIndex} (Should be > -1)`);
+  
+  if (dmIndex === -1 || pmIndex === -1) {
+    Logger.log("❌ CRITICAL ERROR: One or both manager headers are missing or misspelled!");
+    return;
+  }
+
+  // Check the first user row (Row 2)
+  if (data.length > 1) {
+    const row = data[1];
+    Logger.log("--- SAMPLE USER DATA (Row 2) ---");
+    Logger.log(`Name: ${row[headers.indexOf("Name")]}`);
+    Logger.log(`Email: ${row[headers.indexOf("Email")]}`);
+    Logger.log(`Direct Manager Value: '${row[dmIndex]}'`);
+    Logger.log(`Project Manager Value: '${row[pmIndex]}'`);
+  }
+}
+
+function _UPDATE_LEAVE_REQUEST_SHEET() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = getOrCreateSheet(ss, SHEET_NAMES.leaveRequests);
+  
+  // We are adding two new columns to the end
+  // Existing last column is N (SickNoteURL). 
+  // New columns will be O (DirectManagerSnapshot) and P (ProjectManagerSnapshot).
+  
+  const headers = sheet.getRange("A1:P1").getValues()[0];
+  
+  // Check if headers already exist to avoid duplicates
+  if (headers[14] !== "DirectManagerSnapshot") {
+    sheet.getRange("O1").setValue("DirectManagerSnapshot");
+    sheet.getRange("P1").setValue("ProjectManagerSnapshot");
+    Logger.log("Added DirectManagerSnapshot and ProjectManagerSnapshot columns.");
+  } else {
+    Logger.log("Columns already exist.");
+  }
+}
+// ==========================================
+// === PHASE 3: RECRUITMENT & ONBOARDING  ===
+// ==========================================
+
+/**
+ * 1. CREATE REQUISITION (Admin)
+ * Opens a new job position in the 'Requisitions' sheet.
+ */
+function webCreateRequisition(data) {
+  const ss = getSpreadsheet();
+  const reqSheet = getOrCreateSheet(ss, SHEET_NAMES.requisitions);
+  const reqID = `REQ-${new Date().getTime()}`; // Unique Job ID
+  
+  reqSheet.appendRow([
+    reqID,
+    data.title,
+    data.department,
+    data.hiringManager, // Email of the manager
+    new Date(),         // Open Date
+    "Open",             // Status
+    "",                 // Pool Candidates (Empty start)
+    data.description
+  ]);
+  return "Requisition opened successfully: " + reqID;
+}
+
+/**
+ * 2. GET OPEN REQUISITIONS (Public & Admin)
+ * Returns list of open jobs for the dropdown in Recruitment.html
+ */
+function webGetOpenRequisitions() {
+  const ss = getSpreadsheet();
+  const reqSheet = getOrCreateSheet(ss, SHEET_NAMES.requisitions);
+  const data = reqSheet.getDataRange().getValues();
+  const jobs = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    // Col F (Index 5) is Status
+    if (data[i][5] === 'Open') {
+      jobs.push({
+        id: data[i][0],
+        title: data[i][1],
+        dept: data[i][2]
+      });
+    }
+  }
+  return jobs;
+}
+
+// ==========================================
+// === PHASE 4: PROFILE & SELF-SERVICE API ===
+// ==========================================
+
+/**
+ * 1. GET FULL PROFILE (Core + PII)
+ * Fetches all data points for the "My Profile" tab.
+ */
+function webGetMyProfile() {
+  const userEmail = Session.getActiveUser().getEmail().toLowerCase();
+  const ss = getSpreadsheet();
+  const userData = getUserDataFromDb(ss); // This already reads Core columns
+  
+  // Find user in the loaded list
+  const userCore = userData.userList.find(u => u.email === userEmail);
+  if (!userCore) throw new Error("User profile not found.");
+
+  // Fetch Extended PII Data
+  const piiSheet = getOrCreateSheet(ss, SHEET_NAMES.employeesPII);
+  const piiData = piiSheet.getDataRange().getValues();
+  let piiRecord = {};
+
+  // Find PII row by EmployeeID
+  for (let i = 1; i < piiData.length; i++) {
+    if (piiData[i][0] === userCore.empID) {
+      piiRecord = {
+        hiringDate: convertDateToString(parseDate(piiData[i][1])),
+        salary: piiData[i][2],       // Confidential
+        iban: piiData[i][3],         // Confidential
+        address: piiData[i][4],
+        phone: piiData[i][5],
+        medical: piiData[i][6],
+        contractLink: piiData[i][7],
+        nationalId: piiData[i][8],   // New Phase 5 Col
+        passport: piiData[i][9],
+        socialInsurance: piiData[i][10],
+        birthDate: convertDateToString(parseDate(piiData[i][11])),
+        personalEmail: piiData[i][12],
+        maritalStatus: piiData[i][13],
+        dependents: piiData[i][14],
+        emergencyContact: piiData[i][15],
+        emergencyRelation: piiData[i][16]
+      };
+      break;
+    }
+  }
+
+  // Calculate Age
+  let age = "N/A";
+  if (piiRecord.birthDate) {
+    const dob = new Date(piiRecord.birthDate);
+    const diff_ms = Date.now() - dob.getTime();
+    const age_dt = new Date(diff_ms); 
+    age = Math.abs(age_dt.getUTCFullYear() - 1970);
+  }
+
+  // Fetch additional Core fields that getUserDataFromDb might not have exposed in the simplified list
+  // We can re-read the row from the Core Sheet directly to be safe, or rely on getUserDataFromDb if we updated it fully.
+  // Let's just return what we have, assuming getUserDataFromDb is robust.
+  // If you find fields missing, we can add a direct read here.
+
+  return {
+    core: {
+      ...userCore, // Includes Name, ID, Role, Managers, Balances
+      // You might need to explicitly map the new Phase 5 Core columns if getUserDataFromDb doesn't return them in the object
+      // For now, let's assume basic data. If you need specifically "JobLevel" or "GCM", we should ensure getUserDataFromDb returns them.
+    },
+    pii: {
+      ...piiRecord,
+      age: age
+    }
+  };
+}
+
+/**
+ * 2. UPDATE PROFILE (Self-Service)
+ * Allows users to update: Phone, Address, Emergency Contact, Personal Email.
+ * Sensitive fields (IBAN, Name) trigger a request log.
+ */
+function webUpdateProfile(formData) {
+  const userEmail = Session.getActiveUser().getEmail().toLowerCase();
+  const ss = getSpreadsheet();
+  const dbSheet = getOrCreateSheet(ss, SHEET_NAMES.database);
+  const userData = getUserDataFromDb(dbSheet);
+  
+  const user = userData.userList.find(u => u.email === userEmail);
+  if (!user) throw new Error("User not found.");
+
+  const piiSheet = getOrCreateSheet(ss, SHEET_NAMES.employeesPII);
+  const piiData = piiSheet.getDataRange().getValues();
+  let rowToUpdate = -1;
+
+  for (let i = 1; i < piiData.length; i++) {
+    if (piiData[i][0] === user.empID) {
+      rowToUpdate = i + 1;
+      break;
+    }
+  }
+  if (rowToUpdate === -1) throw new Error("PII record not found.");
+
+  // Update Allowed Fields
+  // Address (Col E = 5)
+  if (formData.address) piiSheet.getRange(rowToUpdate, 5).setValue(formData.address);
+  // Phone (Col F = 6)
+  if (formData.phone) piiSheet.getRange(rowToUpdate, 6).setValue(formData.phone);
+  // Personal Email (Col M = 13)
+  if (formData.personalEmail) piiSheet.getRange(rowToUpdate, 13).setValue(formData.personalEmail);
+  // Emergency Contact (Col P = 16)
+  if (formData.emergencyContact) piiSheet.getRange(rowToUpdate, 16).setValue(formData.emergencyContact);
+  // Emergency Relation (Col Q = 17)
+  if (formData.emergencyRelation) piiSheet.getRange(rowToUpdate, 17).setValue(formData.emergencyRelation);
+
+  // Log Restricted Changes (IBAN, Marital Status)
+  const logsSheet = getOrCreateSheet(ss, SHEET_NAMES.logs);
+  
+  // Check IBAN change (Col D = 4)
+  const currentIBAN = piiData[rowToUpdate-1][3];
+  if (formData.iban && formData.iban !== String(currentIBAN)) {
+    logsSheet.appendRow([new Date(), user.name, userEmail, "Data Change Request", `Requested IBAN change to: ${formData.iban}`]);
+    return "Profile updated. Note: IBAN change has been sent to HR for approval.";
+  }
+
+  return "Profile updated successfully.";
+}
+
+// ==========================================
+// === PHASE 5: PERFORMANCE & OFFBOARDING ===
+// ==========================================
+
+/**
+ * 1. SUBMIT PERFORMANCE REVIEW (Manager)
+ * Writes a new review to the 'Performance_Reviews' sheet.
+ */
+function webSubmitPerformanceReview(reviewData) {
+  const adminEmail = Session.getActiveUser().getEmail().toLowerCase();
+  const ss = getSpreadsheet();
+  const dbSheet = getOrCreateSheet(ss, SHEET_NAMES.database);
+  const userData = getUserDataFromDb(dbSheet);
+  
+  // 1. Validate Permissions
+  const targetEmail = reviewData.employeeEmail.toLowerCase();
+  const adminRole = userData.emailToRole[adminEmail] || 'agent';
+  
+  // Check if admin is Direct Manager, Project Manager, or Superadmin
+  const targetSupervisor = userData.emailToSupervisor[targetEmail];
+  const targetProjectMgr = userData.emailToProjectManager[targetEmail]; // If you added this in Phase 2
+  
+  const isAuthorized = (adminRole === 'superadmin') || 
+                       (targetSupervisor === adminEmail) || 
+                       (targetProjectMgr === adminEmail);
+
+  if (!isAuthorized) {
+    throw new Error("Permission denied. You can only review your own team members.");
+  }
+
+  // 2. Get Employee ID
+  const targetUser = userData.userList.find(u => u.email === targetEmail);
+  if (!targetUser) throw new Error("Employee not found.");
+
+  // 3. Write to Performance Sheet
+  const perfSheet = getOrCreateSheet(ss, SHEET_NAMES.performance);
+  const reviewID = `REV-${new Date().getTime()}`;
+  
+  perfSheet.appendRow([
+    reviewID,
+    targetUser.empID,
+    reviewData.year,
+    reviewData.period, // e.g., "Q1", "Annual"
+    reviewData.rating, // 1-5
+    reviewData.comments,
+    new Date() // Timestamp
+  ]);
+
+  return "Performance review submitted successfully.";
+}
+
+/**
+ * 2. GET PERFORMANCE HISTORY (Employee/Manager)
+ * Returns list of past reviews for a specific user.
+ */
+function webGetPerformanceHistory(targetEmail) {
+  const viewerEmail = Session.getActiveUser().getEmail().toLowerCase();
+  const ss = getSpreadsheet();
+  const dbSheet = getOrCreateSheet(ss, SHEET_NAMES.database);
+  const userData = getUserDataFromDb(dbSheet);
+  
+  const emailToFetch = targetEmail || viewerEmail;
+  const viewerRole = userData.emailToRole[viewerEmail] || 'agent';
+
+  // Security Check: Agents can only see their own. Managers can see team's.
+  if (viewerRole === 'agent' && emailToFetch !== viewerEmail) {
+    throw new Error("Permission denied.");
+  }
+
+  // Get Employee ID
+  const targetUser = userData.userList.find(u => u.email === emailToFetch);
+  if (!targetUser) return []; // No user found
+
+  const perfSheet = getOrCreateSheet(ss, SHEET_NAMES.performance);
+  const data = perfSheet.getDataRange().getValues();
+  const reviews = [];
+
+  // Columns: ReviewID(0), EmpID(1), Year(2), Period(3), Rating(4), Comments(5), Date(6)
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][1] === targetUser.empID) {
+      reviews.push({
+        id: data[i][0],
+        year: data[i][2],
+        period: data[i][3],
+        rating: data[i][4],
+        comments: data[i][5],
+        date: convertDateToString(new Date(data[i][6]))
+      });
+    }
+  }
+  
+  return reviews.reverse(); // Newest first
+}
+
+/**
+ * 3. OFFBOARD EMPLOYEE (Admin/HR)
+ * Sets status to 'Left', records exit date, and logs history.
+ */
+function webOffboardEmployee(offboardData) {
+  const adminEmail = Session.getActiveUser().getEmail().toLowerCase();
+  const ss = getSpreadsheet();
+  const dbSheet = getOrCreateSheet(ss, SHEET_NAMES.database);
+  const userData = getUserDataFromDb(dbSheet);
+  
+  const adminRole = userData.emailToRole[adminEmail] || 'agent';
+  if (adminRole !== 'admin' && adminRole !== 'superadmin') {
+    throw new Error("Permission denied. Only HR/Admins can offboard employees.");
+  }
+
+  const targetEmail = offboardData.email.toLowerCase();
+  const row = userData.emailToRow[targetEmail]; // Row index in Core Sheet
+  if (!row) throw new Error("User not found.");
+
+  // 1. Update Core Sheet (Status -> Left, Exit Date)
+  // We need to find the correct column indexes for 'ExitDate' and 'Status'
+  // Since we added them dynamically, let's read headers to be safe.
+  const headers = dbSheet.getRange(1, 1, 1, dbSheet.getLastColumn()).getValues()[0];
+  const statusCol = headers.indexOf("Status") + 1;
+  const exitDateCol = headers.indexOf("ExitDate") + 1;
+
+  if (statusCol > 0) dbSheet.getRange(row, statusCol).setValue("Left");
+  if (exitDateCol > 0) dbSheet.getRange(row, exitDateCol).setValue(offboardData.exitDate);
+
+  // 2. Log to Employee_History
+  const histSheet = getOrCreateSheet(ss, SHEET_NAMES.historyLogs); // Created in Phase 1
+  const targetUser = userData.userList.find(u => u.email === targetEmail);
+  
+  histSheet.appendRow([
+    `HIST-${new Date().getTime()}`,
+    targetUser ? targetUser.empID : "UNKNOWN",
+    new Date(),
+    "Termination/Exit",
+    "Active",
+    "Left"
+  ]);
+
+  // 3. Log to General Logs
+  const logsSheet = getOrCreateSheet(ss, SHEET_NAMES.logs);
+  logsSheet.appendRow([
+    new Date(), 
+    targetUser ? targetUser.name : targetEmail, 
+    adminEmail, 
+    "Offboarding", 
+    `Reason: ${offboardData.reason} | Exit Date: ${offboardData.exitDate}`
+  ]);
+
+  return `Successfully offboarded ${targetEmail}. Status set to 'Left'.`;
 }
